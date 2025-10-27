@@ -347,6 +347,10 @@ tbody td {
 
 .action-buttons {
     text-align: center;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
 }
 
 .footer {

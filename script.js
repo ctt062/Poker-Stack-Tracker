@@ -11,6 +11,7 @@ const blindStructureBtn = document.getElementById('blindStructureBtn');
 const addPlayerBtn = document.getElementById('addPlayerBtn');
 const stackAmountInput = document.getElementById('stackAmount');
 const clearStatsBtn = document.getElementById('clearStatsBtn');
+const exportBtn = document.getElementById('exportBtn');
 const themeToggle = document.getElementById('themeToggle');
 const blindDisplay = document.getElementById('blindDisplay');
 const totalBalanceDisplay = document.getElementById('totalBalance');
@@ -58,6 +59,10 @@ clearStatsBtn.addEventListener('click', () => {
         saveGameState();
         updateDisplay();
     }
+});
+
+exportBtn.addEventListener('click', () => {
+    exportToExcel();
 });
 
 blindForm.addEventListener('submit', (e) => {
@@ -235,4 +240,53 @@ function applyTheme() {
     } else {
         document.body.classList.remove('dark-mode');
     }
+}
+
+function exportToExcel() {
+    if (gameState.players.length === 0) {
+        alert('No data to export. Please add players first.');
+        return;
+    }
+
+    // Create CSV content
+    let csvContent = "Player Name,Total Buy-in,Cash Out,P&L\n";
+    
+    gameState.players.forEach(player => {
+        const pnl = calculatePnL(player);
+        csvContent += `${player.name},${player.totalBuyIn.toFixed(2)},${player.cashOut.toFixed(2)},${pnl.toFixed(2)}\n`;
+    });
+    
+    // Add summary row
+    const totalBuyIn = gameState.players.reduce((sum, p) => sum + p.totalBuyIn, 0);
+    const totalCashOut = gameState.players.reduce((sum, p) => sum + p.cashOut, 0);
+    const totalBalance = calculateTotalBalance();
+    
+    csvContent += `\nSummary,,,,\n`;
+    csvContent += `Total Buy-in,${totalBuyIn.toFixed(2)},,,\n`;
+    csvContent += `Total Cash Out,${totalCashOut.toFixed(2)},,,\n`;
+    csvContent += `Total Balance,${totalBalance.toFixed(2)},,,\n`;
+    
+    // Add blind structure if set
+    if (gameState.blindStructure.small > 0 || gameState.blindStructure.big > 0) {
+        csvContent += `\nBlind Structure,,,,\n`;
+        csvContent += `Small Blind / Big Blind,${gameState.blindStructure.small.toFixed(2)} / ${gameState.blindStructure.big.toFixed(2)},,,\n`;
+    }
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    // Create filename with current date and time
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+    const filename = `poker-tracker-${dateStr}-${timeStr}.csv`;
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
