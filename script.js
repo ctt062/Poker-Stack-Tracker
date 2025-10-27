@@ -168,7 +168,9 @@ function updateDisplay() {
     stackAmountInput.value = gameState.stackAmount;
     
     // Update total players count
-    totalPlayersDisplay.textContent = gameState.players.length;
+    if (totalPlayersDisplay) {
+        totalPlayersDisplay.textContent = gameState.players.length;
+    }
     
     // Update player table
     playerTableBody.innerHTML = '';
