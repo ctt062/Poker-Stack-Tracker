@@ -2,7 +2,8 @@
 let gameState = {
     blindStructure: { small: 0, big: 0 },
     stackAmount: 200,
-    players: []
+    players: [],
+    darkMode: false
 };
 
 // DOM Elements
@@ -10,6 +11,7 @@ const blindStructureBtn = document.getElementById('blindStructureBtn');
 const addPlayerBtn = document.getElementById('addPlayerBtn');
 const stackAmountInput = document.getElementById('stackAmount');
 const clearStatsBtn = document.getElementById('clearStatsBtn');
+const themeToggle = document.getElementById('themeToggle');
 const blindDisplay = document.getElementById('blindDisplay');
 const totalBalanceDisplay = document.getElementById('totalBalance');
 const playerTableBody = document.getElementById('playerTableBody');
@@ -26,6 +28,7 @@ const closeButtons = document.querySelectorAll('.close');
 // Initialize
 loadGameState();
 updateDisplay();
+applyTheme();
 
 // Event Listeners
 blindStructureBtn.addEventListener('click', () => {
@@ -40,6 +43,12 @@ addPlayerBtn.addEventListener('click', () => {
 stackAmountInput.addEventListener('change', (e) => {
     gameState.stackAmount = parseFloat(e.target.value) || 200;
     saveGameState();
+});
+
+themeToggle.addEventListener('click', () => {
+    gameState.darkMode = !gameState.darkMode;
+    saveGameState();
+    applyTheme();
 });
 
 clearStatsBtn.addEventListener('click', () => {
@@ -110,6 +119,19 @@ function addStack(playerId) {
     }
 }
 
+function subtractStack(playerId) {
+    const player = gameState.players.find(p => p.id === playerId);
+    if (player) {
+        player.totalBuyIn -= gameState.stackAmount;
+        // Don't allow negative buy-in
+        if (player.totalBuyIn < 0) {
+            player.totalBuyIn = 0;
+        }
+        saveGameState();
+        updateDisplay();
+    }
+}
+
 function updateCashOut(playerId, amount) {
     const player = gameState.players.find(p => p.id === playerId);
     if (player) {
@@ -157,6 +179,7 @@ function updateDisplay() {
             <td>${player.name}</td>
             <td>$${player.totalBuyIn.toFixed(2)}</td>
             <td>
+                <button class="btn btn-stack-minus" onclick="subtractStack(${player.id})">-</button>
                 <button class="btn btn-success" onclick="addStack(${player.id})">+</button>
             </td>
             <td>
@@ -190,8 +213,22 @@ function loadGameState() {
     if (saved) {
         try {
             gameState = JSON.parse(saved);
+            // Ensure darkMode property exists for backward compatibility
+            if (gameState.darkMode === undefined) {
+                gameState.darkMode = false;
+            }
         } catch (e) {
             console.error('Error loading game state:', e);
         }
+    }
+}
+
+function applyTheme() {
+    if (gameState.darkMode) {
+        document.body.classList.add('dark-mode');
+        themeToggle.textContent = '☀️';
+    } else {
+        document.body.classList.remove('dark-mode');
+        themeToggle.textContent = '🌓';
     }
 }
