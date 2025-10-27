@@ -164,6 +164,16 @@ h1 {
     color: #555;
 }
 
+.player-count {
+    font-weight: 600;
+    color: #3498db;
+    font-size: 16px;
+    padding: 4px 12px;
+    background-color: var(--balance-bg);
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
 .table-container {
     overflow-x: auto;
     margin-bottom: 30px;
@@ -251,6 +261,16 @@ tbody td {
 
 .action-buttons {
     text-align: center;
+}
+
+.footer {
+    text-align: center;
+    padding: 20px;
+    margin-top: 30px;
+    color: var(--text-primary);
+    font-size: 14px;
+    opacity: 0.7;
+    transition: all 0.3s ease;
 }
 
 /* Modal Styles */

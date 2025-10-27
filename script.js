@@ -15,6 +15,7 @@ const themeToggle = document.getElementById('themeToggle');
 const blindDisplay = document.getElementById('blindDisplay');
 const totalBalanceDisplay = document.getElementById('totalBalance');
 const playerTableBody = document.getElementById('playerTableBody');
+const totalPlayersDisplay = document.getElementById('totalPlayers');
 
 // Modals
 const blindModal = document.getElementById('blindModal');
@@ -165,6 +166,9 @@ function updateDisplay() {
     
     // Update stack amount
     stackAmountInput.value = gameState.stackAmount;
+    
+    // Update total players count
+    totalPlayersDisplay.textContent = gameState.players.length;
     
     // Update player table
     playerTableBody.innerHTML = '';
