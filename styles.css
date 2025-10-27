@@ -162,14 +162,31 @@ h1 {
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
-    font-size: 18px;
-    padding: 8px 12px;
+    font-size: 13px;
+    padding: 8px 14px;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
 }
 
 .btn-theme:hover {
     background-color: var(--table-hover);
     border-color: var(--text-primary);
+}
+
+.theme-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+body.dark-mode .theme-icon {
+    color: #fbbf24;
+}
+
+body:not(.dark-mode) .theme-icon {
+    color: #6b7280;
 }
 
 .btn-stack-minus {
