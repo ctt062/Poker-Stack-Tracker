@@ -230,20 +230,9 @@ function loadGameState() {
 }
 
 function applyTheme() {
-    const themeIcon = themeToggle.querySelector('.theme-icon');
-    const themeText = themeToggle.querySelector('.theme-text');
-    
     if (gameState.darkMode) {
         document.body.classList.add('dark-mode');
-        if (themeIcon && themeText) {
-            themeIcon.textContent = '○';
-            themeText.textContent = 'Dark';
-        }
     } else {
         document.body.classList.remove('dark-mode');
-        if (themeIcon && themeText) {
-            themeIcon.textContent = '●';
-            themeText.textContent = 'Light';
-        }
     }
 }

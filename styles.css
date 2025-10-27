@@ -162,13 +162,14 @@ h1 {
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
-    font-size: 13px;
-    padding: 8px 14px;
+    padding: 8px;
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-weight: 500;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    position: relative;
 }
 
 .btn-theme:hover {
@@ -177,12 +178,30 @@ h1 {
 }
 
 .theme-icon {
-    font-size: 16px;
-    line-height: 1;
+    width: 18px;
+    height: 18px;
+    position: absolute;
+    transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-body.dark-mode .theme-icon {
-    color: #fbbf24;
+.sun-icon {
+    opacity: 1;
+    transform: rotate(0deg);
+}
+
+.moon-icon {
+    opacity: 0;
+    transform: rotate(180deg);
+}
+
+body.dark-mode .sun-icon {
+    opacity: 0;
+    transform: rotate(180deg);
+}
+
+body.dark-mode .moon-icon {
+    opacity: 1;
+    transform: rotate(0deg);
 }
 
 body:not(.dark-mode) .theme-icon {
