@@ -67,7 +67,7 @@ fontSizeToggle.addEventListener('click', () => {
     applyFontSize();
 });
 
-exportBtn.addEventListener('click', () => {
+clearStatsBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to clear all stats? This cannot be undone.')) {
         gameState.players = [];
         saveGameState();
