@@ -667,6 +667,17 @@ tbody td {
     box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
 }
 
+.form-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.form-buttons .btn {
+    flex: 1;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     body {

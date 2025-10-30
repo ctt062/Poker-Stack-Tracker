@@ -15,6 +15,7 @@ const clearStatsBtn = document.getElementById('clearStatsBtn');
 const exportBtn = document.getElementById('exportBtn');
 const themeToggle = document.getElementById('themeToggle');
 const fontSizeToggle = document.getElementById('fontSizeToggle');
+const deletePlayerBtn = document.getElementById('deletePlayerBtn');
 const blindDisplay = document.getElementById('blindDisplay');
 const totalBalanceDisplay = document.getElementById('totalBalance');
 const playerTableBody = document.getElementById('playerTableBody');
@@ -115,6 +116,15 @@ editNameForm.addEventListener('submit', (e) => {
     }
 });
 
+deletePlayerBtn.addEventListener('click', () => {
+    if (editingPlayerId && confirm('Are you sure you want to delete this player? This cannot be undone.')) {
+        deletePlayer(editingPlayerId);
+        editNameModal.style.display = 'none';
+        editNameForm.reset();
+        editingPlayerId = null;
+    }
+});
+
 closeButtons.forEach(btn => {
     btn.addEventListener('click', function() {
         this.closest('.modal').style.display = 'none';
@@ -189,6 +199,12 @@ function updatePlayerName(playerId, newName) {
         saveGameState();
         updateDisplay();
     }
+}
+
+function deletePlayer(playerId) {
+    gameState.players = gameState.players.filter(p => p.id !== playerId);
+    saveGameState();
+    updateDisplay();
 }
 
 function calculatePnL(player) {
