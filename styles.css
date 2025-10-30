@@ -356,6 +356,40 @@ body.compact-mode .footer {
     padding: 24px 20px;
 }
 
+/* Force table to fit on screen in compact mode */
+body.compact-mode table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+body.compact-mode th:nth-child(1), /* Player Name */
+body.compact-mode td:nth-child(1) {
+    width: 20%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.compact-mode th:nth-child(2), /* Total Buy-in */
+body.compact-mode td:nth-child(2) {
+    width: 18%;
+}
+
+body.compact-mode th:nth-child(3), /* Stack Control */
+body.compact-mode td:nth-child(3) {
+    width: 22%;
+}
+
+body.compact-mode th:nth-child(4), /* Cash Out */
+body.compact-mode td:nth-child(4) {
+    width: 20%;
+}
+
+body.compact-mode th:nth-child(5), /* P&L */
+body.compact-mode td:nth-child(5) {
+    width: 20%;
+}
+
 .btn-stack-minus {
     background-color: var(--accent-warning);
     color: white;
@@ -395,6 +429,11 @@ body.compact-mode .footer {
 .table-container {
     overflow-x: auto;
     margin-bottom: 30px;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.compact-mode .table-container {
+    overflow-x: visible;
 }
 
 table {
@@ -659,53 +698,135 @@ tbody td {
     
     /* Extra compact for mobile when compact mode is on */
     body.compact-mode .container {
-        padding: 12px 8px;
+        padding: 12px 6px;
     }
     
     body.compact-mode h1 {
-        font-size: 16px;
+        font-size: 14px;
     }
     
     body.compact-mode .header {
-        margin-bottom: 16px;
-        padding-bottom: 12px;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+    }
+    
+    body.compact-mode .header-buttons {
+        gap: 6px;
+    }
+    
+    body.compact-mode .btn-theme {
+        width: 28px;
+        height: 28px;
+        padding: 5px;
+    }
+    
+    body.compact-mode .theme-icon {
+        width: 12px;
+        height: 12px;
+    }
+    
+    body.compact-mode .controls {
+        gap: 8px;
+        margin-bottom: 10px;
     }
     
     body.compact-mode table {
-        font-size: 10px;
+        font-size: 9px;
+        table-layout: fixed;
     }
     
     body.compact-mode th,
     body.compact-mode td {
-        padding: 6px 3px;
-        font-size: 10px;
+        padding: 5px 2px;
+        font-size: 9px;
+        word-wrap: break-word;
     }
     
     body.compact-mode th {
+        font-size: 8px;
+        padding: 6px 2px;
+        letter-spacing: 0;
+    }
+    
+    body.compact-mode th:nth-child(1),
+    body.compact-mode td:nth-child(1) {
+        width: 22%;
         font-size: 9px;
-        padding: 8px 3px;
+    }
+    
+    body.compact-mode th:nth-child(2),
+    body.compact-mode td:nth-child(2) {
+        width: 16%;
+        font-size: 8px;
+    }
+    
+    body.compact-mode th:nth-child(3),
+    body.compact-mode td:nth-child(3) {
+        width: 24%;
+    }
+    
+    body.compact-mode th:nth-child(4),
+    body.compact-mode td:nth-child(4) {
+        width: 18%;
+    }
+    
+    body.compact-mode th:nth-child(5),
+    body.compact-mode td:nth-child(5) {
+        width: 20%;
+        font-size: 9px;
     }
     
     body.compact-mode .cashout-input {
-        width: 55px;
-        padding: 3px 4px;
-        font-size: 10px;
+        width: 100%;
+        max-width: 50px;
+        padding: 2px 3px;
+        font-size: 9px;
+        border-radius: 3px;
     }
     
     body.compact-mode .btn-success,
     body.compact-mode .btn-stack-minus {
-        padding: 2px 6px;
-        font-size: 12px;
+        padding: 2px 5px;
+        font-size: 11px;
+        border-radius: 3px;
+        margin-right: 2px;
     }
     
     body.compact-mode .control-group input {
-        width: 60px;
+        width: 55px;
+        font-size: 9px;
+        padding: 4px 5px;
+    }
+    
+    body.compact-mode .control-group label {
+        font-size: 10px;
+    }
+    
+    body.compact-mode .btn {
+        padding: 5px 8px;
         font-size: 10px;
     }
     
     body.compact-mode .player-count,
     body.compact-mode .blind-display {
-        font-size: 10px;
-        padding: 2px 6px;
+        font-size: 9px;
+        padding: 2px 5px;
+    }
+    
+    body.compact-mode .balance-section {
+        padding: 10px;
+        margin-bottom: 12px;
+    }
+    
+    body.compact-mode .balance-section h3 {
+        font-size: 12px;
+    }
+    
+    body.compact-mode #totalBalance {
+        font-size: 13px;
+    }
+    
+    body.compact-mode .player-name {
+        font-size: 9px;
     }
 }
