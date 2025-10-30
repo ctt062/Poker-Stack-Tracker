@@ -3,7 +3,8 @@ let gameState = {
     blindStructure: { small: 0, big: 0 },
     stackAmount: 200,
     players: [],
-    darkMode: false
+    darkMode: false,
+    compactMode: false
 };
 
 // DOM Elements
@@ -13,6 +14,7 @@ const stackAmountInput = document.getElementById('stackAmount');
 const clearStatsBtn = document.getElementById('clearStatsBtn');
 const exportBtn = document.getElementById('exportBtn');
 const themeToggle = document.getElementById('themeToggle');
+const fontSizeToggle = document.getElementById('fontSizeToggle');
 const blindDisplay = document.getElementById('blindDisplay');
 const totalBalanceDisplay = document.getElementById('totalBalance');
 const playerTableBody = document.getElementById('playerTableBody');
@@ -36,6 +38,7 @@ let editingPlayerId = null;
 loadGameState();
 updateDisplay();
 applyTheme();
+applyFontSize();
 
 // Event Listeners
 blindStructureBtn.addEventListener('click', () => {
@@ -58,7 +61,13 @@ themeToggle.addEventListener('click', () => {
     applyTheme();
 });
 
-clearStatsBtn.addEventListener('click', () => {
+fontSizeToggle.addEventListener('click', () => {
+    gameState.compactMode = !gameState.compactMode;
+    saveGameState();
+    applyFontSize();
+});
+
+exportBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to clear all stats? This cannot be undone.')) {
         gameState.players = [];
         saveGameState();
@@ -263,6 +272,10 @@ function loadGameState() {
             if (gameState.darkMode === undefined) {
                 gameState.darkMode = false;
             }
+            // Ensure compactMode property exists for backward compatibility
+            if (gameState.compactMode === undefined) {
+                gameState.compactMode = false;
+            }
         } catch (e) {
             console.error('Error loading game state:', e);
         }
@@ -274,6 +287,14 @@ function applyTheme() {
         document.body.classList.add('dark-mode');
     } else {
         document.body.classList.remove('dark-mode');
+    }
+}
+
+function applyFontSize() {
+    if (gameState.compactMode) {
+        document.body.classList.add('compact-mode');
+    } else {
+        document.body.classList.remove('compact-mode');
     }
 }
 

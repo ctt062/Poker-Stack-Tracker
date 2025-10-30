@@ -65,6 +65,11 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+.header-buttons {
+    display: flex;
+    gap: 8px;
+}
+
 h1 {
     color: var(--text-secondary);
     font-weight: 600;
@@ -206,6 +211,87 @@ body.dark-mode .moon-icon {
 
 body:not(.dark-mode) .theme-icon {
     color: #6b7280;
+}
+
+/* Compact Mode Styles */
+body.compact-mode {
+    font-size: 12px;
+}
+
+body.compact-mode .container {
+    padding: 20px;
+}
+
+body.compact-mode h1 {
+    font-size: 20px;
+}
+
+body.compact-mode .controls {
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+body.compact-mode .control-group {
+    gap: 6px;
+}
+
+body.compact-mode .control-group label {
+    font-size: 12px;
+}
+
+body.compact-mode .control-group input {
+    padding: 6px 8px;
+    font-size: 12px;
+    width: 90px;
+}
+
+body.compact-mode .btn {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+body.compact-mode .btn-success,
+body.compact-mode .btn-stack-minus {
+    padding: 4px 10px;
+    font-size: 14px;
+}
+
+body.compact-mode th,
+body.compact-mode td {
+    padding: 10px 6px;
+    font-size: 12px;
+}
+
+body.compact-mode th {
+    font-size: 11px;
+}
+
+body.compact-mode .cashout-input {
+    padding: 5px 8px;
+    font-size: 12px;
+    width: 80px;
+}
+
+body.compact-mode .balance-section {
+    padding: 16px;
+}
+
+body.compact-mode .balance-section h3 {
+    font-size: 15px;
+}
+
+body.compact-mode #totalBalance {
+    font-size: 16px;
+}
+
+body.compact-mode .player-count {
+    font-size: 13px;
+    padding: 4px 10px;
+}
+
+body.compact-mode .blind-display {
+    font-size: 11px;
+    padding: 4px 8px;
 }
 
 .btn-stack-minus {
