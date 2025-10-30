@@ -144,6 +144,10 @@ h1 {
     font-size: 16px;
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    min-width: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-success:hover {
@@ -263,6 +267,7 @@ body.compact-mode .btn-success,
 body.compact-mode .btn-stack-minus {
     padding: 3px 8px;
     font-size: 13px;
+    min-width: 28px;
 }
 
 body.compact-mode .btn-theme {
@@ -398,6 +403,10 @@ body.compact-mode td:nth-child(5) {
     font-weight: 600;
     margin-right: 6px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    min-width: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-stack-minus:hover {
@@ -790,6 +799,7 @@ tbody td {
         font-size: 11px;
         border-radius: 3px;
         margin-right: 2px;
+        min-width: 24px;
     }
     
     body.compact-mode .control-group input {
