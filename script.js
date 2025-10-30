@@ -21,11 +21,16 @@ const totalPlayersDisplay = document.getElementById('totalPlayers');
 // Modals
 const blindModal = document.getElementById('blindModal');
 const playerModal = document.getElementById('playerModal');
+const editNameModal = document.getElementById('editNameModal');
 const blindForm = document.getElementById('blindForm');
 const playerForm = document.getElementById('playerForm');
+const editNameForm = document.getElementById('editNameForm');
 
 // Close buttons
 const closeButtons = document.querySelectorAll('.close');
+
+// Store current player being edited
+let editingPlayerId = null;
 
 // Initialize
 loadGameState();
@@ -89,6 +94,18 @@ playerForm.addEventListener('submit', (e) => {
     }
 });
 
+editNameForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newName = document.getElementById('editPlayerName').value.trim();
+    
+    if (newName && editingPlayerId) {
+        updatePlayerName(editingPlayerId, newName);
+        editNameModal.style.display = 'none';
+        editNameForm.reset();
+        editingPlayerId = null;
+    }
+});
+
 closeButtons.forEach(btn => {
     btn.addEventListener('click', function() {
         this.closest('.modal').style.display = 'none';
@@ -147,6 +164,24 @@ function updateCashOut(playerId, amount) {
     }
 }
 
+function editPlayerName(playerId) {
+    const player = gameState.players.find(p => p.id === playerId);
+    if (player) {
+        editingPlayerId = playerId;
+        document.getElementById('editPlayerName').value = player.name;
+        editNameModal.style.display = 'block';
+    }
+}
+
+function updatePlayerName(playerId, newName) {
+    const player = gameState.players.find(p => p.id === playerId);
+    if (player) {
+        player.name = newName;
+        saveGameState();
+        updateDisplay();
+    }
+}
+
 function calculatePnL(player) {
     return player.cashOut - player.totalBuyIn;
 }
@@ -187,7 +222,7 @@ function updateDisplay() {
         
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${player.name}</td>
+            <td><span class="player-name" onclick="editPlayerName(${player.id})" title="Click to edit name">${player.name}</span></td>
             <td>$${player.totalBuyIn.toFixed(2)}</td>
             <td>
                 <button class="btn btn-stack-minus" onclick="subtractStack(${player.id})">-</button>

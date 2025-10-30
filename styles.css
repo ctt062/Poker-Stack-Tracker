@@ -289,6 +289,17 @@ tbody td {
     color: var(--text-primary);
 }
 
+.player-name {
+    cursor: pointer;
+    transition: color 0.2s ease;
+    font-weight: 500;
+}
+
+.player-name:hover {
+    color: var(--accent-primary);
+    text-decoration: underline;
+}
+
 .cashout-input {
     padding: 8px 12px;
     border: 1px solid var(--border-color);
