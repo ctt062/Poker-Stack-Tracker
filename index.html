@@ -58,6 +58,11 @@
             </div>
         </div>
 
+        <div class="session-name-container">
+            <div class="session-name" id="sessionName" onclick="openEditSessionModal()">Click to name your session</div>
+            <div class="banker-name" id="bankerName" onclick="openEditBankerModal()">Banker: Click to set</div>
+        </div>
+
         <div class="table-container">
             <table id="playerTable">
                 <thead>
@@ -140,6 +145,43 @@
                     <button type="submit" class="btn btn-primary">Save</button>
                     <button type="button" id="deletePlayerBtn" class="btn btn-danger">Delete Player</button>
                 </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Session Name Modal -->
+    <div id="editSessionModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Edit Session Name</h2>
+            <form id="editSessionForm">
+                <div class="form-group">
+                    <label>Session Name:</label>
+                    <input type="text" id="editSessionName" placeholder="e.g., Sunday afternoon session at hall">
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Banker Modal -->
+    <div id="editBankerModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Set Banker</h2>
+            <form id="editBankerForm">
+                <div class="form-group">
+                    <label>Select Banker:</label>
+                    <select id="bankerSelect" class="banker-select">
+                        <option value="">-- Select from players --</option>
+                        <option value="custom">Custom name...</option>
+                    </select>
+                </div>
+                <div class="form-group" id="customBankerGroup" style="display: none;">
+                    <label>Custom Banker Name:</label>
+                    <input type="text" id="editBankerName" placeholder="Enter banker name">
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
             </form>
         </div>
     </div>

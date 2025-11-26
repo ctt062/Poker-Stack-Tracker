@@ -1,10 +1,12 @@
 // Game state
 let gameState = {
-    blindStructure: { small: 0, big: 0 },
+    blindStructure: { small: 1, big: 2 },
     stackAmount: 200,
     players: [],
-    darkMode: false,
-    compactMode: false
+    darkMode: true,
+    compactMode: false,
+    sessionName: 'Click to name your session',
+    bankerName: 'Banker: Click to set'
 };
 
 // DOM Elements
@@ -28,9 +30,8 @@ const editNameModal = document.getElementById('editNameModal');
 const blindForm = document.getElementById('blindForm');
 const playerForm = document.getElementById('playerForm');
 const editNameForm = document.getElementById('editNameForm');
-
-// Close buttons
-const closeButtons = document.querySelectorAll('.close');
+const editSessionModal = document.getElementById('editSessionModal');
+const editSessionForm = document.getElementById('editSessionForm');
 
 // Store current player being edited
 let editingPlayerId = null;
@@ -40,6 +41,9 @@ loadGameState();
 updateDisplay();
 applyTheme();
 applyFontSize();
+
+// Close buttons
+const closeButtons = document.querySelectorAll('.close');
 
 // Event Listeners
 blindStructureBtn.addEventListener('click', () => {
@@ -124,6 +128,59 @@ deletePlayerBtn.addEventListener('click', () => {
         editingPlayerId = null;
     }
 });
+
+// Session Name Modal
+editSessionForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newName = document.getElementById('editSessionName').value.trim();
+    
+    if (newName) {
+        gameState.sessionName = newName;
+    } else {
+        gameState.sessionName = 'Click to name your session';
+    }
+    
+    updateSessionNameDisplay();
+    saveGameState();
+    editSessionModal.style.display = 'none';
+    editSessionForm.reset();
+});
+
+// Banker Modal - using setTimeout to ensure DOM is ready
+setTimeout(() => {
+    const form = document.getElementById('editBankerForm');
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const select = document.getElementById('bankerSelect');
+            const customInput = document.getElementById('editBankerName');
+            
+            let bankerName = '';
+            if (select.value === 'custom') {
+                bankerName = customInput.value.trim();
+            } else {
+                bankerName = select.value;
+            }
+            
+            if (bankerName) {
+                gameState.bankerName = `Banker: ${bankerName}`;
+            } else {
+                gameState.bankerName = 'Banker: Click to set';
+            }
+            
+            updateBankerNameDisplay();
+            saveGameState();
+            
+            const modal = document.getElementById('editBankerModal');
+            if (modal) modal.style.display = 'none';
+            
+            // Reset form
+            form.reset();
+            const customGroup = document.getElementById('customBankerGroup');
+            if (customGroup) customGroup.style.display = 'none';
+        });
+    }
+}, 100);
 
 closeButtons.forEach(btn => {
     btn.addEventListener('click', function() {
@@ -229,6 +286,12 @@ function updateDisplay() {
     // Update blind display
     updateBlindDisplay();
     
+    // Update session name display
+    updateSessionNameDisplay();
+    
+    // Update banker name display
+    updateBankerNameDisplay();
+    
     // Update stack amount
     stackAmountInput.value = gameState.stackAmount;
     
@@ -292,6 +355,14 @@ function loadGameState() {
             if (gameState.compactMode === undefined) {
                 gameState.compactMode = false;
             }
+            // Ensure sessionName property exists for backward compatibility
+            if (!gameState.sessionName) {
+                gameState.sessionName = 'Click to name your session';
+            }
+            // Ensure bankerName property exists for backward compatibility
+            if (!gameState.bankerName) {
+                gameState.bankerName = 'Banker: Click to set';
+            }
         } catch (e) {
             console.error('Error loading game state:', e);
         }
@@ -320,8 +391,15 @@ function exportToExcel() {
         return;
     }
 
-    // Create CSV content
-    let csvContent = "Player Name,Total Buy-in,Cash Out,P&L\n";
+    // Create CSV content with session name and banker
+    const sessionName = gameState.sessionName !== 'Click to name your session' ? gameState.sessionName : 'Poker Session';
+    const banker = gameState.bankerName !== 'Banker: Click to set' ? gameState.bankerName : '';
+    let csvContent = `Session: ${sessionName}\n`;
+    if (banker) {
+        csvContent += `${banker}\n`;
+    }
+    csvContent += `Date: ${new Date().toLocaleDateString()}\n\n`;
+    csvContent += "Player Name,Total Buy-in,Cash Out,P&L\n";
     
     gameState.players.forEach(player => {
         const pnl = calculatePnL(player);
@@ -361,4 +439,88 @@ function exportToExcel() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+}
+
+// Session Name Functions
+function updateSessionNameDisplay() {
+    const sessionNameElement = document.getElementById('sessionName');
+    if (sessionNameElement) {
+        sessionNameElement.textContent = gameState.sessionName || 'Click to name your session';
+    }
+}
+
+function openEditSessionModal() {
+    const input = document.getElementById('editSessionName');
+    if (gameState.sessionName === 'Click to name your session') {
+        input.value = '';
+    } else {
+        input.value = gameState.sessionName;
+    }
+    editSessionModal.style.display = 'block';
+    input.focus();
+}
+
+// Banker Functions
+function updateBankerNameDisplay() {
+    const bankerNameElement = document.getElementById('bankerName');
+    if (bankerNameElement) {
+        bankerNameElement.textContent = gameState.bankerName || 'Banker: Click to set';
+    }
+}
+
+// Make function globally accessible
+window.openEditBankerModal = function() {
+    console.log('openEditBankerModal called');
+    const modal = document.getElementById('editBankerModal');
+    const select = document.getElementById('bankerSelect');
+    const customGroup = document.getElementById('customBankerGroup');
+    const input = document.getElementById('editBankerName');
+    
+    console.log('Modal:', modal, 'Select:', select);
+    
+    if (!modal || !select) {
+        console.error('Banker modal elements not found', 'modal:', modal, 'select:', select);
+        return;
+    }
+    
+    // Populate dropdown with current players
+    select.innerHTML = '<option value="">-- Select from players --</option>';
+    gameState.players.forEach(player => {
+        const option = document.createElement('option');
+        option.value = player.name;
+        option.textContent = player.name;
+        select.appendChild(option);
+    });
+    select.innerHTML += '<option value="custom">Custom name...</option>';
+    
+    // Set current value
+    const currentBanker = (gameState.bankerName || 'Banker: Click to set').replace('Banker: ', '');
+    if (currentBanker !== 'Click to set') {
+        const playerExists = gameState.players.some(p => p.name === currentBanker);
+        if (playerExists) {
+            select.value = currentBanker;
+        } else if (currentBanker) {
+            select.value = 'custom';
+            if (customGroup) customGroup.style.display = 'block';
+            if (input) input.value = currentBanker;
+        }
+    }
+    
+    // Add change listener for dropdown
+    select.onchange = function() {
+        if (this.value === 'custom') {
+            if (customGroup) customGroup.style.display = 'block';
+            if (input) input.focus();
+        } else {
+            if (customGroup) customGroup.style.display = 'none';
+        }
+    };
+    
+    modal.style.display = 'block';
+    select.focus();
+};
+
+// Alias for backwards compatibility
+function openEditBankerModal() {
+    window.openEditBankerModal();
 }
