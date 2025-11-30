@@ -5,16 +5,17 @@
 }
 
 :root {
-    --bg-primary: #f7f7f8;
-    --bg-secondary: #ffffff;
-    --text-primary: #353740;
-    --text-secondary: #202123;
-    --border-color: #e5e5e5;
-    --table-header-bg: #f7f7f8;
-    --table-hover: #f9f9f9;
-    --balance-bg: #f0f0f0;
-    --shadow: rgba(0, 0, 0, 0.05);
-    --modal-overlay: rgba(0, 0, 0, 0.4);
+    --bg-primary: #1E1E1E;
+    --bg-secondary: #2C2C2C;
+    --bg-input: #383838;
+    --text-primary: #ECECF1;
+    --text-secondary: #ECECF1;
+    --border-color: #2A2A2A;
+    --table-header-bg: #2C2C2C;
+    --table-hover: #2A2A2A;
+    --balance-bg: #2C2C2C;
+    --shadow: rgba(0, 0, 0, 0.3);
+    --modal-overlay: rgba(0, 0, 0, 0.7);
     --accent-primary: #10a37f;
     --accent-hover: #0d8968;
     --accent-secondary: #ef4444;
@@ -22,14 +23,15 @@
 }
 
 body.dark-mode {
-    --bg-primary: #343541;
-    --bg-secondary: #444654;
-    --text-primary: #ececf1;
-    --text-secondary: #ffffff;
-    --border-color: #565869;
-    --table-header-bg: #40414f;
-    --table-hover: #4e4f60;
-    --balance-bg: #40414f;
+    --bg-primary: #1E1E1E;
+    --bg-secondary: #2C2C2C;
+    --bg-input: #383838;
+    --text-primary: #ECECF1;
+    --text-secondary: #ECECF1;
+    --border-color: #2A2A2A;
+    --table-header-bg: #2C2C2C;
+    --table-hover: #2A2A2A;
+    --balance-bg: #2C2C2C;
     --shadow: rgba(0, 0, 0, 0.3);
     --modal-overlay: rgba(0, 0, 0, 0.8);
     --accent-primary: #19c37d;
@@ -131,7 +133,7 @@ h1 {
     padding: 10px 12px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-input);
     color: var(--text-primary);
     font-size: 14px;
     font-family: inherit;
@@ -170,7 +172,7 @@ h1 {
     border-radius: 6px;
     font-size: 14px;
     width: 120px;
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-input);
     color: var(--text-primary);
     transition: all 0.2s ease;
     outline: none;
@@ -576,7 +578,7 @@ tbody td {
     border-radius: 6px;
     width: 110px;
     font-size: 14px;
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-input);
     color: var(--text-primary);
     transition: all 0.2s ease;
     outline: none;
@@ -722,7 +724,7 @@ tbody td {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     font-size: 14px;
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-input);
     color: var(--text-primary);
     transition: all 0.2s ease;
     outline: none;
