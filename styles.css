@@ -82,8 +82,8 @@ h1 {
 
 .session-name-container {
     text-align: center;
-    margin: 24px 0;
-    padding: 16px 0;
+    margin: 12px 0;
+    padding: 8px 0;
     border-top: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
     display: flex;
@@ -94,7 +94,7 @@ h1 {
 }
 
 .session-name {
-    font-size: 16px;
+    font-size: 14px;
     color: var(--text-secondary);
     opacity: 0.7;
     cursor: pointer;

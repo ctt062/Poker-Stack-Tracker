@@ -4,7 +4,7 @@ let gameState = {
     stackAmount: 200,
     players: [],
     darkMode: true,
-    compactMode: false,
+    compactMode: true,
     sessionName: 'Click to name your session',
     bankerName: 'Banker: Click to set'
 };
