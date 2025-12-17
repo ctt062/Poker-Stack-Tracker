@@ -5,17 +5,18 @@
 }
 
 :root {
-    --bg-primary: #1E1E1E;
-    --bg-secondary: #2C2C2C;
-    --bg-input: #383838;
-    --text-primary: #ECECF1;
-    --text-secondary: #ECECF1;
-    --border-color: #2A2A2A;
-    --table-header-bg: #2C2C2C;
-    --table-hover: #2A2A2A;
-    --balance-bg: #2C2C2C;
-    --shadow: rgba(0, 0, 0, 0.3);
-    --modal-overlay: rgba(0, 0, 0, 0.7);
+    /* Light mode colors (default) */
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F5F5F5;
+    --bg-input: #FFFFFF;
+    --text-primary: #1F2937;
+    --text-secondary: #1F2937;
+    --border-color: #E5E7EB;
+    --table-header-bg: #F9FAFB;
+    --table-hover: #F3F4F6;
+    --balance-bg: #F5F5F5;
+    --shadow: rgba(0, 0, 0, 0.1);
+    --modal-overlay: rgba(0, 0, 0, 0.5);
     --accent-primary: #10a37f;
     --accent-hover: #0d8968;
     --accent-secondary: #ef4444;
@@ -23,6 +24,7 @@
 }
 
 body.dark-mode {
+    /* Dark mode colors */
     --bg-primary: #1E1E1E;
     --bg-secondary: #2C2C2C;
     --bg-input: #383838;
