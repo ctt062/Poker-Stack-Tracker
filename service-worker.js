@@ -1,12 +1,13 @@
 const CACHE_NAME = 'poker-tracker-v1';
+const BASE_PATH = '/Poker-Stack-Tracker';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/script.js',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  `${BASE_PATH}/`,
+  `${BASE_PATH}/index.html`,
+  `${BASE_PATH}/styles.css`,
+  `${BASE_PATH}/script.js`,
+  `${BASE_PATH}/manifest.json`,
+  `${BASE_PATH}/icons/icon-192.png`,
+  `${BASE_PATH}/icons/icon-512.png`
 ];
 
 // Install event - cache resources
@@ -26,7 +27,16 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request)
       .then((response) => {
         // Return cached version or fetch from network
-        return response || fetch(event.request);
+        if (response) {
+          return response;
+        }
+        // Try to fetch, but handle errors gracefully
+        return fetch(event.request).catch(() => {
+          // If network fails and it's a navigation request, return index.html
+          if (event.request.mode === 'navigate') {
+            return caches.match(`${BASE_PATH}/index.html`);
+          }
+        });
       })
   );
 });

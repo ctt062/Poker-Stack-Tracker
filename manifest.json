@@ -2,7 +2,7 @@
   "name": "Poker Stack Tracker",
   "short_name": "Poker Tracker",
   "description": "Track poker game stacks, buy-ins, and cash-outs",
-  "start_url": "/",
+  "start_url": "/Poker-Stack-Tracker/",
   "display": "standalone",
   "background_color": "#FFFFFF",
   "theme_color": "#10a37f",
