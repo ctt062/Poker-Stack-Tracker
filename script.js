@@ -75,6 +75,8 @@ fontSizeToggle.addEventListener('click', () => {
 clearStatsBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to clear all stats? This cannot be undone.')) {
         gameState.players = [];
+        gameState.sessionName = 'Click to name your session';
+        gameState.bankerName = 'Banker: Click to set';
         saveGameState();
         updateDisplay();
     }

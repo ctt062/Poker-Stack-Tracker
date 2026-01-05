@@ -82,17 +82,19 @@ h1 {
     transition: color 0.2s ease;
 }
 
-.session-name-container {
-    text-align: center;
-    margin: 12px 0;
-    padding: 8px 0;
-    border-top: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
+.control-row {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 24px;
+    gap: 12px;
+    margin-bottom: 12px;
     flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.control-row:last-child {
+    margin-bottom: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
 }
 
 .session-name {
@@ -151,17 +153,14 @@ h1 {
 }
 
 .controls {
-    display: flex;
-    gap: 16px;
     margin-bottom: 24px;
-    flex-wrap: wrap;
-    align-items: center;
 }
 
 .control-group {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .control-group label {
@@ -311,8 +310,16 @@ body.compact-mode .header {
 }
 
 body.compact-mode .controls {
-    gap: 8px;
     margin-bottom: 12px;
+}
+
+body.compact-mode .control-row {
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+body.compact-mode .control-row:last-child {
+    padding-top: 8px;
 }
 
 body.compact-mode .control-group {
@@ -769,14 +776,32 @@ tbody td {
         padding-bottom: 16px;
     }
     
-    .controls {
+    .control-row {
         flex-direction: column;
         align-items: stretch;
-        gap: 12px;
+        gap: 8px;
     }
     
-    .control-group {
+    .control-row .control-group {
         justify-content: space-between;
+        width: 100%;
+    }
+    
+    .control-row:last-child {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .control-row:last-child .session-name,
+    .control-row:last-child .banker-name {
+        flex: 1;
+        min-width: 120px;
+    }
+    
+    .control-row:last-child #addPlayerBtn {
+        flex: 1;
+        min-width: 120px;
     }
     
     table {
@@ -833,8 +858,16 @@ tbody td {
     }
     
     body.compact-mode .controls {
-        gap: 8px;
         margin-bottom: 10px;
+    }
+    
+    body.compact-mode .control-row {
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+    
+    body.compact-mode .control-row:last-child {
+        padding-top: 6px;
     }
     
     body.compact-mode table {

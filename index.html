@@ -41,29 +41,28 @@
         </div>
         
         <div class="controls">
-            <div class="control-group">
-                <button id="blindStructureBtn" class="btn btn-primary">Set Blind Structure</button>
-                <span id="blindDisplay" class="blind-display"></span>
+            <div class="control-row">
+                <div class="control-group">
+                    <button id="blindStructureBtn" class="btn btn-primary">Set Blind Structure</button>
+                    <span id="blindDisplay" class="blind-display"></span>
+                </div>
+                
+                <div class="control-group">
+                    <label>Stack Amount: $</label>
+                    <input type="number" id="stackAmount" value="200" min="1">
+                </div>
+                
+                <div class="control-group">
+                    <label>Total Players:</label>
+                    <span id="totalPlayers" class="player-count">0</span>
+                </div>
             </div>
             
-            <div class="control-group">
-                <button id="addPlayerBtn" class="btn btn-primary">Add Player</button>
+            <div class="control-row">
+                <div class="session-name" id="sessionName" onclick="openEditSessionModal()">Click to name your session</div>
+                <div class="banker-name" id="bankerName" onclick="openEditBankerModal()">Banker: Click to set</div>
+                <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
             </div>
-            
-            <div class="control-group">
-                <label>Stack Amount: $</label>
-                <input type="number" id="stackAmount" value="200" min="1">
-            </div>
-            
-            <div class="control-group">
-                <label>Total Players:</label>
-                <span id="totalPlayers" class="player-count">0</span>
-            </div>
-        </div>
-
-        <div class="session-name-container">
-            <div class="session-name" id="sessionName" onclick="openEditSessionModal()">Click to name your session</div>
-            <div class="banker-name" id="bankerName" onclick="openEditBankerModal()">Banker: Click to set</div>
         </div>
 
         <div class="table-container">
