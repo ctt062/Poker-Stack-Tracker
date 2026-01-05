@@ -12,6 +12,10 @@ A minimalist web application for tracking chip stacks during poker games.
 - **Balance Overview**: View total cash balance across all players
 - **Data Persistence**: Automatically saves game state to browser localStorage
 - **Responsive Design**: Works on desktop and mobile devices
+- **Progressive Web App (PWA)**: Installable as a native app on your phone
+- **Offline Support**: Works offline with service worker caching
+- **Dark/Light Mode**: Toggle between dark and light themes
+- **Compact Mode**: Toggle between normal and compact font sizes
 
 ## How to Use
 
@@ -22,6 +26,22 @@ A minimalist web application for tracking chip stacks during poker games.
 5. **Record Cash Out**: Enter the cash-out amount for each player
 6. **View Statistics**: See real-time P&L and total balance
 7. **Clear Stats**: Reset all data when starting a new game
+
+## Installation as PWA
+
+This app can be installed on your phone as a Progressive Web App (PWA):
+
+### On iOS (Safari):
+1. Visit the site on your iPhone/iPad
+2. Tap the Share button
+3. Select "Add to Home Screen"
+4. The app will appear on your home screen like a native app
+
+### On Android (Chrome):
+1. Visit the site on your Android device
+2. You may see an "Install" prompt, or
+3. Use the menu (⋮) → "Add to Home Screen" or "Install app"
+4. The app will be installed and work offline
 
 ## Deployment
 
@@ -37,6 +57,8 @@ Simply open `index.html` in a web browser to run locally.
 - CSS3
 - Vanilla JavaScript
 - localStorage API for data persistence
+- Progressive Web App (PWA) with Web App Manifest
+- Service Worker for offline functionality and caching
 
 ## License
 
