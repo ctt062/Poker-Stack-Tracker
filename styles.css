@@ -229,14 +229,10 @@ h1 {
     font-weight: 500;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     border-radius: 6px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .btn-success:hover {
     background-color: var(--accent-hover);
-    transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
