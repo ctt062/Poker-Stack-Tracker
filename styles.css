@@ -84,7 +84,7 @@ h1 {
 
 .control-row {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     margin-bottom: 12px;
     flex-wrap: wrap;
     align-items: center;
@@ -159,8 +159,21 @@ h1 {
 .control-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.control-group button + .blind-display {
+    margin-left: 0;
+}
+
+.control-group label + input {
+    margin-left: 0;
+}
+
+.control-group label + .player-count {
+    margin-left: 0;
 }
 
 .control-group label {
@@ -777,18 +790,48 @@ tbody td {
     }
     
     .control-row {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+    
+    .control-row:first-child {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 4px;
+    }
+    
+    .control-row:first-child .control-group {
+        flex-shrink: 0;
+        margin: 0;
+    }
+    
+    .control-row:first-child .btn {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+    
+    .control-row:first-child .blind-display {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+    
+    .control-row:first-child .control-group input {
+        padding: 6px 8px;
+        font-size: 12px;
+        width: 80px;
+    }
+    
+    .control-row:first-child .player-count {
+        padding: 4px 8px;
+        font-size: 12px;
     }
     
     .control-row .control-group {
-        justify-content: space-between;
-        width: 100%;
+        gap: 4px;
     }
     
     .control-row:last-child {
-        flex-direction: row;
         flex-wrap: wrap;
         justify-content: center;
     }
@@ -796,12 +839,12 @@ tbody td {
     .control-row:last-child .session-name,
     .control-row:last-child .banker-name {
         flex: 1;
-        min-width: 120px;
+        min-width: 100px;
     }
     
     .control-row:last-child #addPlayerBtn {
         flex: 1;
-        min-width: 120px;
+        min-width: 100px;
     }
     
     table {
