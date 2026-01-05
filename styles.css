@@ -522,6 +522,15 @@ body.compact-mode td:nth-child(5) {
     padding: 6px 12px;
     border-radius: 6px;
     font-size: 14px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    display: inline-block;
+}
+
+.blind-display:hover {
+    background-color: rgba(16, 163, 127, 0.1);
+    border-color: var(--accent-primary);
 }
 
 .player-count {
@@ -831,20 +840,27 @@ tbody td {
         gap: 4px;
     }
     
-    .control-row:last-child {
-        flex-wrap: wrap;
+    .control-row:nth-child(2) {
         justify-content: center;
     }
     
-    .control-row:last-child .session-name,
-    .control-row:last-child .banker-name {
+    .control-row:nth-child(2) .session-name,
+    .control-row:nth-child(2) .banker-name {
         flex: 1;
         min-width: 100px;
+    }
+    
+    .control-row:last-child {
+        justify-content: center;
+    }
+    
+    .control-row:last-child .control-group {
+        flex: 1;
     }
     
     .control-row:last-child #addPlayerBtn {
         flex: 1;
-        min-width: 100px;
+        min-width: 120px;
     }
     
     table {

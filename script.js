@@ -5,12 +5,11 @@ let gameState = {
     players: [],
     darkMode: true,
     compactMode: true,
-    sessionName: 'Click to name your session',
-    bankerName: 'Banker: Click to set'
+    sessionName: 'Session Name',
+    bankerName: 'Banker'
 };
 
 // DOM Elements
-const blindStructureBtn = document.getElementById('blindStructureBtn');
 const addPlayerBtn = document.getElementById('addPlayerBtn');
 const stackAmountInput = document.getElementById('stackAmount');
 const clearStatsBtn = document.getElementById('clearStatsBtn');
@@ -46,9 +45,13 @@ applyFontSize();
 const closeButtons = document.querySelectorAll('.close');
 
 // Event Listeners
-blindStructureBtn.addEventListener('click', () => {
+// Function to open blind modal (called from HTML onclick)
+function openBlindModal() {
     blindModal.style.display = 'block';
-});
+}
+
+// Make function globally accessible
+window.openBlindModal = openBlindModal;
 
 addPlayerBtn.addEventListener('click', () => {
     document.getElementById('playerBuyIn').value = gameState.stackAmount;
@@ -75,8 +78,8 @@ fontSizeToggle.addEventListener('click', () => {
 clearStatsBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to clear all stats? This cannot be undone.')) {
         gameState.players = [];
-        gameState.sessionName = 'Click to name your session';
-        gameState.bankerName = 'Banker: Click to set';
+        gameState.sessionName = 'Session Name';
+        gameState.bankerName = 'Banker';
         saveGameState();
         updateDisplay();
     }
@@ -139,7 +142,7 @@ editSessionForm.addEventListener('submit', (e) => {
     if (newName) {
         gameState.sessionName = newName;
     } else {
-        gameState.sessionName = 'Click to name your session';
+        gameState.sessionName = 'Session Name';
     }
     
     updateSessionNameDisplay();
@@ -167,7 +170,7 @@ setTimeout(() => {
             if (bankerName) {
                 gameState.bankerName = `Banker: ${bankerName}`;
             } else {
-                gameState.bankerName = 'Banker: Click to set';
+                gameState.bankerName = 'Banker';
             }
             
             updateBankerNameDisplay();
@@ -280,7 +283,7 @@ function updateBlindDisplay() {
     if (gameState.blindStructure.small > 0 || gameState.blindStructure.big > 0) {
         blindDisplay.textContent = `$${gameState.blindStructure.small.toFixed(2)} / $${gameState.blindStructure.big.toFixed(2)}`;
     } else {
-        blindDisplay.textContent = '';
+        blindDisplay.textContent = 'Click to set';
     }
 }
 
@@ -358,12 +361,12 @@ function loadGameState() {
                 gameState.compactMode = false;
             }
             // Ensure sessionName property exists for backward compatibility
-            if (!gameState.sessionName) {
-                gameState.sessionName = 'Click to name your session';
+            if (!gameState.sessionName || gameState.sessionName === 'Click to name your session') {
+                gameState.sessionName = 'Session Name';
             }
             // Ensure bankerName property exists for backward compatibility
-            if (!gameState.bankerName) {
-                gameState.bankerName = 'Banker: Click to set';
+            if (!gameState.bankerName || gameState.bankerName === 'Banker: Click to set') {
+                gameState.bankerName = 'Banker';
             }
         } catch (e) {
             console.error('Error loading game state:', e);
@@ -394,8 +397,8 @@ function exportToExcel() {
     }
 
     // Create CSV content with session name and banker
-    const sessionName = gameState.sessionName !== 'Click to name your session' ? gameState.sessionName : 'Poker Session';
-    const banker = gameState.bankerName !== 'Banker: Click to set' ? gameState.bankerName : '';
+    const sessionName = gameState.sessionName !== 'Session Name' ? gameState.sessionName : 'Poker Session';
+    const banker = gameState.bankerName !== 'Banker' ? gameState.bankerName : '';
     let csvContent = `Session: ${sessionName}\n`;
     if (banker) {
         csvContent += `${banker}\n`;
@@ -447,13 +450,13 @@ function exportToExcel() {
 function updateSessionNameDisplay() {
     const sessionNameElement = document.getElementById('sessionName');
     if (sessionNameElement) {
-        sessionNameElement.textContent = gameState.sessionName || 'Click to name your session';
+        sessionNameElement.textContent = gameState.sessionName || 'Session Name';
     }
 }
 
 function openEditSessionModal() {
     const input = document.getElementById('editSessionName');
-    if (gameState.sessionName === 'Click to name your session') {
+    if (gameState.sessionName === 'Session Name') {
         input.value = '';
     } else {
         input.value = gameState.sessionName;
@@ -466,7 +469,7 @@ function openEditSessionModal() {
 function updateBankerNameDisplay() {
     const bankerNameElement = document.getElementById('bankerName');
     if (bankerNameElement) {
-        bankerNameElement.textContent = gameState.bankerName || 'Banker: Click to set';
+        bankerNameElement.textContent = gameState.bankerName || 'Banker';
     }
 }
 
@@ -496,8 +499,8 @@ window.openEditBankerModal = function() {
     select.innerHTML += '<option value="custom">Custom name...</option>';
     
     // Set current value
-    const currentBanker = (gameState.bankerName || 'Banker: Click to set').replace('Banker: ', '');
-    if (currentBanker !== 'Click to set') {
+    const currentBanker = (gameState.bankerName || 'Banker').replace('Banker: ', '');
+    if (currentBanker !== 'Banker' && currentBanker !== 'Click to set') {
         const playerExists = gameState.players.some(p => p.name === currentBanker);
         if (playerExists) {
             select.value = currentBanker;
