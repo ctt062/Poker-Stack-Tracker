@@ -141,7 +141,7 @@ h1 {
     border-radius: 6px;
     background-color: var(--bg-input);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 16px;
     font-family: inherit;
     cursor: pointer;
     transition: border-color 0.2s ease;
