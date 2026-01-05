@@ -77,7 +77,7 @@ body {
 h1 {
     color: var(--text-secondary);
     font-weight: 600;
-    font-size: 18px;
+    font-size: 28px;
     letter-spacing: -0.5px;
     transition: color 0.2s ease;
 }
@@ -141,7 +141,7 @@ h1 {
     border-radius: 6px;
     background-color: var(--bg-input);
     color: var(--text-primary);
-    font-size: 16px;
+    font-size: 14px;
     font-family: inherit;
     cursor: pointer;
     transition: border-color 0.2s ease;
@@ -186,7 +186,7 @@ h1 {
     padding: 10px 12px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    font-size: 16px;
+    font-size: 14px;
     width: 120px;
     background-color: var(--bg-input);
     color: var(--text-primary);
@@ -611,7 +611,7 @@ tbody td {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     width: 110px;
-    font-size: 16px;
+    font-size: 14px;
     background-color: var(--bg-input);
     color: var(--text-primary);
     transition: all 0.2s ease;
@@ -651,7 +651,7 @@ tbody td {
 
 .balance-section h3 {
     font-weight: 500;
-    font-size: 18px;
+    font-size: 28px;
     color: var(--text-primary);
     transition: color 0.2s ease;
 }
@@ -757,7 +757,7 @@ tbody td {
     padding: 12px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    font-size: 16px;
+    font-size: 14px;
     background-color: var(--bg-input);
     color: var(--text-primary);
     transition: all 0.2s ease;
