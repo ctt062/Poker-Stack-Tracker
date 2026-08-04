@@ -43,5 +43,3 @@ This site is deployed on GitHub Pages at: https://ctt062.github.io/Poker-Stack-T
 
 MIT License
 
-<!-- YOLO: temporary PR for GitHub achievement test -->
-<!-- YOLO: temporary PR for GitHub achievement test (attempt 3) -->
