@@ -19,16 +19,6 @@ A minimalist web application for tracking chip stacks during poker games.
 - **Dark/Light Mode**: Toggle between dark and light themes
 - **Compact Mode**: Toggle between normal and compact font sizes
 
-## How to Use
-
-1. **Set Blind Structure**: Click "Set Blind Structure" to input small and big blind amounts
-2. **Set Stack Amount**: Enter the default stack amount (e.g., $200)
-3. **Add Players**: Click "Add Player" to add players with their names and buy-in amounts
-4. **Track Buy-ins**: Use the '+' button to add additional stacks during the game
-5. **Record Cash Out**: Enter the cash-out amount for each player
-6. **View Statistics**: See real-time P&L and total balance
-7. **Clear Stats**: Reset all data when starting a new game
-
 ## Installation as PWA
 
 This app can be installed on your phone as a Progressive Web App (PWA):
@@ -48,19 +38,6 @@ This app can be installed on your phone as a Progressive Web App (PWA):
 ## Deployment
 
 This site is deployed on GitHub Pages at: https://ctt062.github.io/Poker-Stack-Tracker/
-
-## Local Development
-
-Simply open `index.html` in a web browser to run locally.
-
-## Technologies Used
-
-- HTML5
-- CSS3
-- Vanilla JavaScript
-- localStorage API for data persistence
-- Progressive Web App (PWA) with Web App Manifest
-- Service Worker for offline functionality and caching
 
 ## License
 
