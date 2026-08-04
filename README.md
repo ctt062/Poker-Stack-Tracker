@@ -1,5 +1,7 @@
 # Poker Stack Tracker
 
+![Poker Stack Tracker Dark Mode](Poker_Stack_Tracker_Dark.png)
+
 A minimalist web application for tracking chip stacks during poker games.
 
 ## Features
