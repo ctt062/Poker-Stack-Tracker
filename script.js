@@ -5,6 +5,8 @@ const KNOWN_ROLES = ['host', 'editor', 'viewer'];
 // Room session bookkeeping
 let pendingSoloStash = false;
 let lastEditable = null;
+// Last non-null room status so leave-after-ended can keep final stacks.
+let lastRoomStatus = null;
 
 // Game state
 let gameState = {
@@ -440,6 +442,9 @@ function saveGameState() {
     if (window.RoomSync && RoomSync.isInRoom() && RoomSync.canEdit() && !RoomSync.isApplyingRemote()) {
         RoomSync.pushGameState(gameState).catch((err) => {
             console.error('Failed to sync room', err);
+            const msg = (err && err.message) || 'Failed to sync room';
+            setRoomError(msg);
+            alert('Could not sync stacks to the room. Changes are saved only on this device.');
         });
     }
 }
@@ -1060,7 +1065,18 @@ function initRoomUI() {
 
         if (!snap) {
             pendingSoloStash = false;
-            restoreSoloSnapshot();
+            // After a room ends, keep the final shared numbers as the new solo
+            // session. Only restore the pre-join solo backup when leaving an
+            // active room mid-session.
+            if (lastRoomStatus === 'ended') {
+                localStorage.removeItem(SOLO_BACKUP_KEY);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+            } else {
+                restoreSoloSnapshot();
+            }
+            lastRoomStatus = null;
+        } else {
+            lastRoomStatus = snap.status || 'active';
         }
 
         // Room snapshots also fire on presence heartbeats; rebuilding the table

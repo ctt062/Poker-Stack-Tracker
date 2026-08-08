@@ -24,6 +24,13 @@
     let applyingRemote = false;
     let initialized = false;
     let sdkPromise = null;
+    // Local game push sequencing: ignore older snapshots while a newer local
+    // write is in flight (same-device echo / out-of-order). Multi-device LWW
+    // still applies once pushes drain.
+    let localPushEpoch = 0;
+    let confirmedPushEpoch = 0;
+    let pendingPushGame = null;
+    let pushChain = Promise.resolve();
 
     /** @type {null | {
      *   roomId: string,
@@ -241,6 +248,12 @@
         }
     }
 
+    function resetPushState() {
+        localPushEpoch = 0;
+        confirmedPushEpoch = 0;
+        pendingPushGame = null;
+    }
+
     function attachListener(roomId) {
         detachListener();
         unsubRoom = db.collection('rooms').doc(roomId).onSnapshot(
@@ -248,6 +261,7 @@
                 if (!snap.exists) {
                     roomState = null;
                     stopPresence();
+                    resetPushState();
                     emit('room', null);
                     emit('error', 'Room no longer exists.');
                     return;
@@ -258,21 +272,27 @@
                     roomState = null;
                     stopPresence();
                     detachListener();
+                    resetPushState();
                     emit('room', null);
                     emit('error', 'You were removed from the room.');
                     return;
                 }
 
-                const prevGameJson = roomState && roomState.game
-                    ? JSON.stringify(roomState.game)
-                    : null;
+                const prevGame = roomState && roomState.game ? roomState.game : null;
+                const prevGameJson = prevGame ? JSON.stringify(prevGame) : null;
                 const nextGame = data.game || null;
                 const nextGameJson = nextGame ? JSON.stringify(nextGame) : null;
+                const gameChanged = !!(nextGameJson && nextGameJson !== prevGameJson);
+                // Protect newer local edits from an older in-flight snapshot echo.
+                const skipStaleRemote = gameChanged && localPushEpoch > confirmedPushEpoch;
 
                 setRoomStateFromDoc(roomId, data);
+                if (skipStaleRemote && roomState) {
+                    roomState.game = prevGame;
+                }
                 emit('room', getRoomSnapshot());
 
-                if (nextGameJson && nextGameJson !== prevGameJson) {
+                if (gameChanged && !skipStaleRemote) {
                     applyRemote(nextGame);
                 }
             },
@@ -412,6 +432,7 @@
         detachListener();
         const prev = roomState;
         roomState = null;
+        resetPushState();
         localStorage.removeItem('pst_room_id');
         emit('room', null);
 
@@ -467,11 +488,28 @@
         if (roomState.status === 'ended') return;
         if (!db) return;
 
-        const game = sharedGameFromLocal(gameState);
-        await db.collection('rooms').doc(roomState.roomId).update({
-            game,
-            updatedAt: serverTs()
-        });
+        pendingPushGame = sharedGameFromLocal(gameState);
+        localPushEpoch += 1;
+
+        const run = async () => {
+            while (pendingPushGame && roomState && roomState.status !== 'ended' && db) {
+                const game = pendingPushGame;
+                const epoch = localPushEpoch;
+                pendingPushGame = null;
+                await db.collection('rooms').doc(roomState.roomId).update({
+                    game,
+                    updatedAt: serverTs()
+                });
+                if (roomState) {
+                    roomState.game = game;
+                }
+                confirmedPushEpoch = epoch;
+            }
+        };
+
+        const result = pushChain.then(run, run);
+        pushChain = result.catch(() => {});
+        return result;
     }
 
     async function tryRestoreRoom() {
