@@ -107,6 +107,7 @@ exportBtn.addEventListener('click', () => {
 
 blindForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!assertCanEdit()) return;
     const smallBlind = parseFloat(document.getElementById('smallBlind').value);
     const bigBlind = parseFloat(document.getElementById('bigBlind').value);
     
@@ -119,6 +120,7 @@ blindForm.addEventListener('submit', (e) => {
 
 playerForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!assertCanEdit()) return;
     const name = document.getElementById('playerName').value.trim();
     const buyIn = parseFloat(document.getElementById('playerBuyIn').value);
     
@@ -131,6 +133,7 @@ playerForm.addEventListener('submit', (e) => {
 
 editNameForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!assertCanEdit()) return;
     const newName = document.getElementById('editPlayerName').value.trim();
     
     if (newName && editingPlayerId) {
@@ -142,6 +145,7 @@ editNameForm.addEventListener('submit', (e) => {
 });
 
 deletePlayerBtn.addEventListener('click', () => {
+    if (!assertCanEdit()) return;
     if (editingPlayerId && confirm('Are you sure you want to delete this player? This cannot be undone.')) {
         deletePlayer(editingPlayerId);
         editNameModal.style.display = 'none';
@@ -153,6 +157,7 @@ deletePlayerBtn.addEventListener('click', () => {
 // Session Name Modal
 editSessionForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!assertCanEdit()) return;
     const newName = document.getElementById('editSessionName').value.trim();
     
     if (newName) {
@@ -173,6 +178,7 @@ setTimeout(() => {
     if (form) {
         form.addEventListener('submit', (e) => {
             e.preventDefault();
+            if (!assertCanEdit()) return;
             const select = document.getElementById('bankerSelect');
             const customInput = document.getElementById('editBankerName');
             
@@ -577,18 +583,23 @@ function exportToExcel() {
     }
 
     // Create CSV content with session name and banker
+    const csvCell = (value) => {
+        let text = String(value ?? '');
+        if (/^[=+\-@]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+    };
     const sessionName = gameState.sessionName !== 'Session Name' ? gameState.sessionName : 'Poker Session';
     const banker = gameState.bankerName !== 'Banker' ? gameState.bankerName : '';
-    let csvContent = `Session: ${sessionName}\n`;
+    let csvContent = `Session: ${csvCell(sessionName)}\n`;
     if (banker) {
-        csvContent += `${banker}\n`;
+        csvContent += `${csvCell(banker)}\n`;
     }
     csvContent += `Date: ${new Date().toLocaleDateString()}\n\n`;
     csvContent += "Player Name,Total Buy-in,Cash Out,P&L\n";
     
     gameState.players.forEach(player => {
         const pnl = calculatePnL(player);
-        csvContent += `${player.name},${player.totalBuyIn.toFixed(2)},${player.cashOut.toFixed(2)},${pnl.toFixed(2)}\n`;
+        csvContent += `${csvCell(player.name)},${player.totalBuyIn.toFixed(2)},${player.cashOut.toFixed(2)},${pnl.toFixed(2)}\n`;
     });
     
     // Add summary row
@@ -1093,4 +1104,3 @@ window.addStack = addStack;
 window.subtractStack = subtractStack;
 window.updateCashOut = updateCashOut;
 window.editPlayerName = editPlayerName;
-
