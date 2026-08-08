@@ -55,10 +55,10 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## 6. Verify
 
-1. Open the app on device A → **Room → Create room** → note the code  
-2. Device B → **Room → Join** with the code  
-3. B is **view only**; on A open **People → Allow edit** for B  
-4. Edits should appear on the other device within about a second  
+1. Open the app on device A → **Room → Create room** → note the code
+2. Device B → **Room → Join** with the code
+3. B is **view only**; on A open **People → Allow edit** for B
+4. Edits should appear on the other device within about a second
 
 ## How it works
 
@@ -84,6 +84,6 @@ Firebase **Spark (free)** is enough for casual home games (occasional rooms, a h
 
 ## Migrating from Supabase
 
-1. You can ignore or delete Supabase project credentials  
-2. Use `firebase-config.js` + `firestore.rules` (this doc)  
-3. Old `supabase-config.js` / `supabase/schema.sql` are no longer used by the app  
+1. You can ignore or delete Supabase project credentials
+2. Use `firebase-config.js` + `firestore.rules` (this doc)
+3. Old `supabase-config.js` / `supabase/schema.sql` are no longer used by the app
