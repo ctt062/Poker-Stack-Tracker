@@ -71,7 +71,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |
 | Code | 5-char code in `roomCodes/{code}` → `rooms/{id}` |
-| Solo data | Joining a room stashes your solo session locally and restores it when you leave |
+| Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
 | SDK | Firebase scripts load on demand, so solo mode still starts offline |
 
 ## Optional deep link
@@ -80,7 +80,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## Cost / limits
 
-Firebase **Spark (free)** is enough for casual home games (occasional rooms, a handful of devices). End rooms when done so old docs do not pile up forever.
+Firebase **Spark (free)** is enough for casual home games (occasional rooms, a handful of devices). Ending a room marks it `ended` and deletes the short code so new joins fail; the `rooms/{id}` document is kept so participants can still see final numbers until they leave.
 
 ## Migrating from Supabase
 

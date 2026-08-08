@@ -263,6 +263,7 @@
                 if (!snap.exists) {
                     roomState = null;
                     stopPresence();
+                    detachListener();
                     resetPushState();
                     emit('room', null);
                     emit('error', 'Room no longer exists.');

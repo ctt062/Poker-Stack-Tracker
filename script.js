@@ -442,6 +442,8 @@ function saveGameState() {
     if (window.RoomSync && RoomSync.isInRoom() && RoomSync.canEdit() && !RoomSync.isApplyingRemote()) {
         RoomSync.pushGameState(gameState).catch((err) => {
             console.error('Failed to sync room', err);
+            // Leave invalidates the push session; ignore late rejections.
+            if (!RoomSync.isInRoom()) return;
             const msg = (err && err.message) || 'Failed to sync room';
             setRoomError(msg);
             alert('Could not sync stacks to the room. Changes are saved only on this device.');
@@ -1094,7 +1096,10 @@ function initRoomUI() {
     });
 
     RoomSync.on('error', (msg) => {
-        if (msg) console.warn('Room:', msg);
+        if (!msg) return;
+        console.warn('Room:', msg);
+        setRoomError(msg);
+        alert(msg);
     });
 
     updateRoomStatusBar(RoomSync.getRoomSnapshot());
