@@ -987,12 +987,18 @@ function initRoomUI() {
             endBtn.disabled = true;
             try {
                 await RoomSync.endRoom();
+                // Keep the final room snapshot as the new solo session; discard
+                // the pre-room backup so leave does not restore old numbers.
+                localStorage.removeItem(SOLO_BACKUP_KEY);
+                pendingSoloStash = false;
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
                 // Ending would otherwise leave the host in a read-only room, so
                 // drop back to solo with the final numbers still editable.
                 await RoomSync.leaveRoom();
                 updateRoomStatusBar(null);
                 syncRoomModalPanels(null);
                 applyEditabilityUI();
+                updateDisplay();
                 const roomModal = document.getElementById('roomModal');
                 if (roomModal) roomModal.style.display = 'none';
             } catch (e) {
