@@ -1,10 +1,12 @@
-const CACHE_NAME = 'poker-tracker-v1';
+const CACHE_NAME = 'poker-tracker-v4';
 const BASE_PATH = '/Poker-Stack-Tracker';
 const urlsToCache = [
   `${BASE_PATH}/`,
   `${BASE_PATH}/index.html`,
   `${BASE_PATH}/styles.css`,
   `${BASE_PATH}/script.js`,
+  `${BASE_PATH}/room.js`,
+  `${BASE_PATH}/firebase-config.js`,
   `${BASE_PATH}/manifest.json`,
   `${BASE_PATH}/icons/icon-192.png`,
   `${BASE_PATH}/icons/icon-512.png`

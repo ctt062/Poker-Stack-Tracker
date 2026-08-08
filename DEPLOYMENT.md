@@ -37,5 +37,6 @@ git push origin main
 ## Notes
 
 - The site is static HTML/CSS/JavaScript, so it deploys instantly
-- All data is stored in the browser's localStorage
-- No backend server is required
+- Solo mode stores data in the browser's localStorage (no backend)
+- Optional **Room** multi-device sync uses Firebase; see [ROOM_SETUP.md](ROOM_SETUP.md)
+- After changing `firebase-config.js` or app scripts, hard-refresh or bump the service worker cache name if an old bundle is sticky

@@ -57,6 +57,18 @@
                 <div class="session-name" id="sessionName" onclick="openEditSessionModal()">Session Name</div>
                 <div class="banker-name" id="bankerName" onclick="openEditBankerModal()">Banker</div>
             </div>
+
+            <div class="control-row room-row">
+                <div id="roomStatusBar" class="room-status-bar room-status-solo">
+                    <span id="roomStatusText">Solo mode</span>
+                    <span id="roomCodeBadge" class="room-code-badge" hidden></span>
+                    <span id="roomRoleBadge" class="room-role-badge" hidden></span>
+                </div>
+                <div class="room-actions">
+                    <button type="button" id="roomBtn" class="btn btn-secondary">Room</button>
+                    <button type="button" id="roomPeopleBtn" class="btn btn-secondary" hidden title="People in room">People</button>
+                </div>
+            </div>
             
             <div class="control-row">
                 <div class="control-group">
@@ -191,6 +203,66 @@
         </div>
     </div>
 
+    <!-- Room Modal: create / join / manage -->
+    <div id="roomModal" class="modal">
+        <div class="modal-content room-modal-content">
+            <span class="close">&times;</span>
+            <h2 id="roomModalTitle">Room</h2>
+            <p id="roomModalHint" class="room-hint">Share a room so other devices stay in sync for this session.</p>
+
+            <div id="roomNotConfigured" class="room-alert" hidden>
+                Room sync needs a Firebase project. See <code>ROOM_SETUP.md</code> in the repo, then fill in <code>firebase-config.js</code>.
+            </div>
+
+            <div id="roomSoloPanel">
+                <div class="form-group">
+                    <label>Your display name</label>
+                    <input type="text" id="roomDisplayName" placeholder="e.g. Alex" maxlength="32" autocomplete="nickname">
+                </div>
+                <div class="room-solo-actions">
+                    <button type="button" id="createRoomBtn" class="btn btn-primary">Create room</button>
+                </div>
+                <div class="room-divider">or join existing</div>
+                <div class="form-group room-join-row">
+                    <input type="text" id="joinRoomCode" placeholder="Room code" maxlength="8" autocomplete="off" class="room-code-input">
+                    <button type="button" id="joinRoomBtn" class="btn btn-primary">Join</button>
+                </div>
+            </div>
+
+            <div id="roomActivePanel" hidden>
+                <div class="room-code-display">
+                    <span class="room-code-label">Room code</span>
+                    <span id="activeRoomCode" class="room-code-value">----</span>
+                    <button type="button" id="copyRoomCodeBtn" class="btn btn-secondary btn-small">Copy</button>
+                </div>
+                <p id="activeRoomRole" class="room-hint"></p>
+                <div class="room-active-actions">
+                    <button type="button" id="openPeopleBtn" class="btn btn-secondary">People &amp; permissions</button>
+                    <button type="button" id="leaveRoomBtn" class="btn btn-secondary">Leave room</button>
+                    <button type="button" id="endRoomBtn" class="btn btn-danger" hidden>End room</button>
+                </div>
+            </div>
+
+            <p id="roomError" class="room-error" hidden></p>
+        </div>
+    </div>
+
+    <!-- People / permissions Modal -->
+    <div id="peopleModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>People in room</h2>
+            <p class="room-hint">Viewers see live stacks. Host can grant edit access.</p>
+            <ul id="peopleList" class="people-list"></ul>
+        </div>
+    </div>
+
+    <!-- Firebase compat SDKs (only used when firebase-config.js is filled in) -->
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="room.js"></script>
     <script src="script.js"></script>
     <script>
         // Register service worker for PWA

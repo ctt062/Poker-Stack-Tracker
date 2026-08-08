@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isHost() {
+      return isSignedIn() && resource.data.hostId == request.auth.uid;
+    }
+
+    function isParticipant() {
+      return isSignedIn() && request.auth.uid in resource.data.participants;
+    }
+
+    function myRole() {
+      return resource.data.participants[request.auth.uid].role;
+    }
+
+    function canEditGame() {
+      return isParticipant() && myRole() in ['host', 'editor'];
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Short code → roomId (code secrecy is the main join gate)
+    match /roomCodes/{code} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['roomId', 'createdAt'])
+        && request.resource.data.roomId is string;
+      allow delete: if isSignedIn();
+      allow update: if false;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.hostId == request.auth.uid
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants[request.auth.uid].role == 'host'
+        && request.resource.data.status == 'active';
+
+      allow update: if isSignedIn() && (
+        // Host: full control (roles, end room, game, etc.)
+        isHost()
+        // Editor/host role: game state only
+        || (
+          canEditGame()
+          && changedKeys().hasOnly(['game', 'updatedAt'])
+        )
+        // Existing participant: presence / rename self (role fixed unless host)
+        || (
+          isParticipant()
+          && changedKeys().hasOnly(['participants', 'updatedAt'])
+          && request.resource.data.participants[request.auth.uid].role
+            == resource.data.participants[request.auth.uid].role
+          && request.resource.data.hostId == resource.data.hostId
+          && request.resource.data.code == resource.data.code
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.game == resource.data.game
+        )
+        // First join as viewer
+        || (
+          !(request.auth.uid in resource.data.participants)
+          && changedKeys().hasOnly(['participants', 'updatedAt'])
+          && request.resource.data.hostId == resource.data.hostId
+          && request.resource.data.code == resource.data.code
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.game == resource.data.game
+          && request.auth.uid in request.resource.data.participants
+          && request.resource.data.participants[request.auth.uid].role == 'viewer'
+        )
+      );
+
+      allow delete: if isHost();
+    }
+  }
+}
