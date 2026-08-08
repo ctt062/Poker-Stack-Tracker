@@ -112,7 +112,7 @@ blindForm.addEventListener('submit', (e) => {
     if (!assertCanEdit()) return;
     const smallBlind = parseFloat(document.getElementById('smallBlind').value);
     const bigBlind = parseFloat(document.getElementById('bigBlind').value);
-    
+
     gameState.blindStructure = { small: smallBlind, big: bigBlind };
     saveGameState();
     updateBlindDisplay();
@@ -125,7 +125,7 @@ playerForm.addEventListener('submit', (e) => {
     if (!assertCanEdit()) return;
     const name = document.getElementById('playerName').value.trim();
     const buyIn = parseFloat(document.getElementById('playerBuyIn').value);
-    
+
     if (name && buyIn >= 0) {
         addPlayer(name, buyIn);
         playerModal.style.display = 'none';
@@ -137,7 +137,7 @@ editNameForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!assertCanEdit()) return;
     const newName = document.getElementById('editPlayerName').value.trim();
-    
+
     if (newName && editingPlayerId) {
         updatePlayerName(editingPlayerId, newName);
         editNameModal.style.display = 'none';
@@ -161,13 +161,13 @@ editSessionForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!assertCanEdit()) return;
     const newName = document.getElementById('editSessionName').value.trim();
-    
+
     if (newName) {
         gameState.sessionName = newName;
     } else {
         gameState.sessionName = 'Session Name';
     }
-    
+
     updateSessionNameDisplay();
     saveGameState();
     editSessionModal.style.display = 'none';
@@ -183,26 +183,26 @@ setTimeout(() => {
             if (!assertCanEdit()) return;
             const select = document.getElementById('bankerSelect');
             const customInput = document.getElementById('editBankerName');
-            
+
             let bankerName = '';
             if (select.value === 'custom') {
                 bankerName = customInput.value.trim();
             } else {
                 bankerName = select.value;
             }
-            
+
             if (bankerName) {
                 gameState.bankerName = `Banker: ${bankerName}`;
             } else {
                 gameState.bankerName = 'Banker';
             }
-            
+
             updateBankerNameDisplay();
             saveGameState();
-            
+
             const modal = document.getElementById('editBankerModal');
             if (modal) modal.style.display = 'none';
-            
+
             // Reset form
             form.reset();
             const customGroup = document.getElementById('customBankerGroup');
@@ -233,7 +233,7 @@ function addPlayer(name, buyIn) {
         totalBuyIn: buyIn,
         cashOut: 0
     };
-    
+
     gameState.players.push(player);
     saveGameState();
     updateDisplay();
@@ -337,30 +337,30 @@ function updateBlindDisplay() {
 function updateDisplay() {
     // Update blind display
     updateBlindDisplay();
-    
+
     // Update session name display
     updateSessionNameDisplay();
-    
+
     // Update banker name display
     updateBankerNameDisplay();
-    
+
     // Update stack amount
     stackAmountInput.value = gameState.stackAmount;
-    
+
     // Update total players count
     if (totalPlayersDisplay) {
         totalPlayersDisplay.textContent = gameState.players.length;
     }
-    
+
     // Update player table
     playerTableBody.innerHTML = '';
-    
+
     const editable = canEditGame();
 
     gameState.players.forEach(player => {
         playerTableBody.appendChild(buildPlayerRow(player, editable));
     });
-    
+
     // Update total balance
     const totalBalance = calculateTotalBalance();
     const balanceSign = totalBalance > 0 ? '+' : '';
@@ -603,39 +603,39 @@ function exportToExcel() {
     }
     csvContent += `Date: ${new Date().toLocaleDateString()}\n\n`;
     csvContent += "Player Name,Total Buy-in,Cash Out,P&L\n";
-    
+
     gameState.players.forEach(player => {
         const pnl = calculatePnL(player);
         csvContent += `${csvCell(player.name)},${player.totalBuyIn.toFixed(2)},${player.cashOut.toFixed(2)},${pnl.toFixed(2)}\n`;
     });
-    
+
     // Add summary row
     const totalBuyIn = gameState.players.reduce((sum, p) => sum + p.totalBuyIn, 0);
     const totalCashOut = gameState.players.reduce((sum, p) => sum + p.cashOut, 0);
     const totalBalance = calculateTotalBalance();
-    
+
     csvContent += `\nSummary,,,,\n`;
     csvContent += `Total Buy-in,${totalBuyIn.toFixed(2)},,,\n`;
     csvContent += `Total Cash Out,${totalCashOut.toFixed(2)},,,\n`;
     csvContent += `Total Balance,${totalBalance.toFixed(2)},,,\n`;
-    
+
     // Add blind structure if set
     if (gameState.blindStructure.small > 0 || gameState.blindStructure.big > 0) {
         csvContent += `\nBlind Structure,,,,\n`;
         csvContent += `Small Blind / Big Blind,${gameState.blindStructure.small.toFixed(2)} / ${gameState.blindStructure.big.toFixed(2)},,,\n`;
     }
-    
+
     // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     // Create filename with current date and time
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
     const filename = `poker-tracker-${dateStr}-${timeStr}.csv`;
-    
+
     link.setAttribute('href', url);
     link.setAttribute('download', filename);
     link.style.visibility = 'hidden';
@@ -679,12 +679,12 @@ window.openEditBankerModal = function() {
     const select = document.getElementById('bankerSelect');
     const customGroup = document.getElementById('customBankerGroup');
     const input = document.getElementById('editBankerName');
-    
+
     if (!modal || !select) {
         console.error('Banker modal elements not found', 'modal:', modal, 'select:', select);
         return;
     }
-    
+
     // Populate dropdown with current players
     select.innerHTML = '<option value="">-- Select from players --</option>';
     gameState.players.forEach(player => {
@@ -694,7 +694,7 @@ window.openEditBankerModal = function() {
         select.appendChild(option);
     });
     select.innerHTML += '<option value="custom">Custom name...</option>';
-    
+
     // Set current value
     const currentBanker = (gameState.bankerName || 'Banker').replace('Banker: ', '');
     if (currentBanker !== 'Banker' && currentBanker !== 'Click to set') {
@@ -707,7 +707,7 @@ window.openEditBankerModal = function() {
             if (input) input.value = currentBanker;
         }
     }
-    
+
     // Add change listener for dropdown
     select.onchange = function() {
         if (this.value === 'custom') {
@@ -717,7 +717,7 @@ window.openEditBankerModal = function() {
             if (customGroup) customGroup.style.display = 'none';
         }
     };
-    
+
     modal.style.display = 'block';
     select.focus();
 };

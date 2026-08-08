@@ -781,197 +781,197 @@ tbody td {
     body {
         padding: 10px;
     }
-    
+
     .container {
         padding: 20px 12px;
     }
-    
+
     h1 {
         font-size: 20px;
     }
-    
+
     .header {
         margin-bottom: 20px;
         padding-bottom: 16px;
     }
-    
+
     .control-row {
         gap: 6px;
         margin-bottom: 10px;
     }
-    
+
     .control-row:first-child {
         flex-wrap: nowrap;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         gap: 4px;
     }
-    
+
     .control-row:first-child .control-group {
         flex-shrink: 0;
         margin: 0;
     }
-    
+
     .control-row:first-child .btn {
         padding: 8px 12px;
         font-size: 12px;
     }
-    
+
     .control-row:first-child .blind-display {
         padding: 4px 8px;
         font-size: 12px;
     }
-    
+
     .control-row:first-child .control-group input {
         padding: 6px 8px;
         font-size: 12px;
         width: 80px;
     }
-    
+
     .control-row:first-child .player-count {
         padding: 4px 8px;
         font-size: 12px;
     }
-    
+
     .control-row .control-group {
         gap: 4px;
     }
-    
+
     .control-row:nth-child(2) {
         justify-content: center;
     }
-    
+
     .control-row:nth-child(2) .session-name,
     .control-row:nth-child(2) .banker-name {
         flex: 1;
         min-width: 100px;
     }
-    
+
     .control-row:last-child {
         justify-content: center;
     }
-    
+
     .control-row:last-child .control-group {
         flex: 1;
     }
-    
+
     .control-row:last-child #addPlayerBtn {
         flex: 1;
         min-width: 120px;
     }
-    
+
     table {
         font-size: 12px;
     }
-    
+
     th, td {
         padding: 10px 6px;
         font-size: 12px;
     }
-    
+
     th {
         font-size: 11px;
     }
-    
+
     .cashout-input {
         width: 70px;
         font-size: 12px;
     }
-    
+
     .modal-content {
         padding: 24px;
         margin: 20% auto;
         width: 95%;
     }
-    
+
     /* Extra compact for mobile when compact mode is on */
     body.compact-mode .container {
         padding: 12px 6px;
     }
-    
+
     body.compact-mode h1 {
         font-size: 14px;
     }
-    
+
     body.compact-mode .header {
         margin-bottom: 12px;
         padding-bottom: 10px;
     }
-    
+
     body.compact-mode .header-buttons {
         gap: 6px;
     }
-    
+
     body.compact-mode .btn-theme {
         width: 28px;
         height: 28px;
         padding: 5px;
     }
-    
+
     body.compact-mode .theme-icon {
         width: 12px;
         height: 12px;
     }
-    
+
     body.compact-mode .controls {
         margin-bottom: 10px;
     }
-    
+
     body.compact-mode .control-row {
         gap: 6px;
         margin-bottom: 6px;
     }
-    
+
     body.compact-mode .control-row:last-child {
         padding-top: 6px;
     }
-    
+
     body.compact-mode table {
         font-size: 9px;
         table-layout: fixed;
     }
-    
+
     body.compact-mode th,
     body.compact-mode td {
         padding: 5px 2px;
         font-size: 9px;
         word-wrap: break-word;
     }
-    
+
     body.compact-mode th {
         font-size: 8px;
         padding: 6px 2px;
         letter-spacing: 0;
     }
-    
+
     body.compact-mode th:nth-child(1),
     body.compact-mode td:nth-child(1) {
         width: 22%;
         font-size: 9px;
     }
-    
+
     body.compact-mode th:nth-child(2),
     body.compact-mode td:nth-child(2) {
         width: 16%;
         font-size: 8px;
     }
-    
+
     body.compact-mode th:nth-child(3),
     body.compact-mode td:nth-child(3) {
         width: 24%;
     }
-    
+
     body.compact-mode th:nth-child(4),
     body.compact-mode td:nth-child(4) {
         width: 18%;
     }
-    
+
     body.compact-mode th:nth-child(5),
     body.compact-mode td:nth-child(5) {
         width: 20%;
         font-size: 9px;
     }
-    
+
     body.compact-mode .cashout-input {
         width: 100%;
         max-width: 50px;
@@ -979,7 +979,7 @@ tbody td {
         font-size: 9px;
         border-radius: 3px;
     }
-    
+
     body.compact-mode .btn-success,
     body.compact-mode .btn-stack-minus {
         padding: 2px 5px;
@@ -988,41 +988,41 @@ tbody td {
         margin-right: 2px;
         min-width: 24px;
     }
-    
+
     body.compact-mode .control-group input {
         width: 55px;
         font-size: 9px;
         padding: 4px 5px;
     }
-    
+
     body.compact-mode .control-group label {
         font-size: 10px;
     }
-    
+
     body.compact-mode .btn {
         padding: 5px 8px;
         font-size: 10px;
     }
-    
+
     body.compact-mode .player-count,
     body.compact-mode .blind-display {
         font-size: 9px;
         padding: 2px 5px;
     }
-    
+
     body.compact-mode .balance-section {
         padding: 10px;
         margin-bottom: 12px;
     }
-    
+
     body.compact-mode .balance-section h3 {
         font-size: 12px;
     }
-    
+
     body.compact-mode #totalBalance {
         font-size: 13px;
     }
-    
+
     body.compact-mode .player-name {
         font-size: 9px;
     }
