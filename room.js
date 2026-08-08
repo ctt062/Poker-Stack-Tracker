@@ -82,13 +82,13 @@
     }
 
     function sharedGameFromLocal(gameState) {
-        return {
+        return JSON.parse(JSON.stringify({
             blindStructure: gameState.blindStructure,
             stackAmount: gameState.stackAmount,
             players: gameState.players,
             sessionName: gameState.sessionName,
             bankerName: gameState.bankerName
-        };
+        }));
     }
 
     function serverTs() {
@@ -496,33 +496,36 @@
         const sessionAtEnqueue = pushSessionId;
 
         const run = async () => {
-            try {
-                while (
-                    pendingPushGame
-                    && roomState
-                    && roomState.status !== 'ended'
-                    && db
-                    && sessionAtEnqueue === pushSessionId
-                ) {
-                    const game = pendingPushGame;
-                    const epoch = localPushEpoch;
-                    const roomId = roomState.roomId;
-                    pendingPushGame = null;
+            while (
+                pendingPushGame
+                && roomState
+                && roomState.status !== 'ended'
+                && db
+                && sessionAtEnqueue === pushSessionId
+            ) {
+                const game = pendingPushGame;
+                const epoch = localPushEpoch;
+                const roomId = roomState.roomId;
+                pendingPushGame = null;
+                try {
                     await db.collection('rooms').doc(roomId).update({
                         game,
                         updatedAt: serverTs()
                     });
-                    if (sessionAtEnqueue !== pushSessionId) return;
-                    if (roomState && roomState.roomId === roomId) {
-                        roomState.game = game;
+                } catch (err) {
+                    if (sessionAtEnqueue !== pushSessionId) throw err;
+                    if (!pendingPushGame) {
+                        pendingPushGame = game;
+                    } else if (pendingPushGame !== game) {
+                        continue;
                     }
-                    confirmedPushEpoch = epoch;
+                    throw err;
                 }
-            } catch (err) {
-                if (sessionAtEnqueue === pushSessionId && !pendingPushGame) {
-                    confirmedPushEpoch = localPushEpoch;
+                if (sessionAtEnqueue !== pushSessionId) return;
+                if (roomState && roomState.roomId === roomId) {
+                    roomState.game = game;
                 }
-                throw err;
+                confirmedPushEpoch = epoch;
             }
         };
 
