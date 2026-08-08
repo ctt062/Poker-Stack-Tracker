@@ -29,6 +29,7 @@
     // still applies once pushes drain.
     let localPushEpoch = 0;
     let confirmedPushEpoch = 0;
+    let pushSessionId = 0;
     let pendingPushGame = null;
     let pushChain = Promise.resolve();
 
@@ -249,6 +250,7 @@
     }
 
     function resetPushState() {
+        pushSessionId += 1;
         localPushEpoch = 0;
         confirmedPushEpoch = 0;
         pendingPushGame = null;
@@ -490,20 +492,36 @@
 
         pendingPushGame = sharedGameFromLocal(gameState);
         localPushEpoch += 1;
+        const sessionAtEnqueue = pushSessionId;
 
         const run = async () => {
-            while (pendingPushGame && roomState && roomState.status !== 'ended' && db) {
-                const game = pendingPushGame;
-                const epoch = localPushEpoch;
-                pendingPushGame = null;
-                await db.collection('rooms').doc(roomState.roomId).update({
-                    game,
-                    updatedAt: serverTs()
-                });
-                if (roomState) {
-                    roomState.game = game;
+            try {
+                while (
+                    pendingPushGame
+                    && roomState
+                    && roomState.status !== 'ended'
+                    && db
+                    && sessionAtEnqueue === pushSessionId
+                ) {
+                    const game = pendingPushGame;
+                    const epoch = localPushEpoch;
+                    const roomId = roomState.roomId;
+                    pendingPushGame = null;
+                    await db.collection('rooms').doc(roomId).update({
+                        game,
+                        updatedAt: serverTs()
+                    });
+                    if (sessionAtEnqueue !== pushSessionId) return;
+                    if (roomState && roomState.roomId === roomId) {
+                        roomState.game = game;
+                    }
+                    confirmedPushEpoch = epoch;
                 }
-                confirmedPushEpoch = epoch;
+            } catch (err) {
+                if (sessionAtEnqueue === pushSessionId && !pendingPushGame) {
+                    confirmedPushEpoch = localPushEpoch;
+                }
+                throw err;
             }
         };
 
