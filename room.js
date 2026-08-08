@@ -7,8 +7,15 @@
 
     const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
     const CODE_LENGTH = 5;
+    const CODE_ATTEMPTS = 8;
     const PRESENCE_MS = 20000;
     const STALE_MS = 60000;
+    const SDK_VERSION = '10.14.1';
+    const SDK_SCRIPTS = [
+        'firebase-app-compat.js',
+        'firebase-auth-compat.js',
+        'firebase-firestore-compat.js'
+    ];
 
     let auth = null;
     let db = null;
@@ -16,6 +23,7 @@
     let presenceTimer = null;
     let applyingRemote = false;
     let initialized = false;
+    let sdkPromise = null;
 
     /** @type {null | {
      *   roomId: string,
@@ -79,9 +87,46 @@
         return global.firebase.firestore.FieldValue.serverTimestamp();
     }
 
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const el = document.createElement('script');
+            el.src = src;
+            el.async = false;
+            el.onload = () => resolve();
+            el.onerror = () => {
+                console.error('Failed to load script', src);
+                reject(new Error('Could not reach Firebase. Check your connection and try again.'));
+            };
+            document.head.appendChild(el);
+        });
+    }
+
+    /**
+     * The compat SDKs are fetched from the CDN only when a room is actually
+     * used, so solo mode (including offline PWA launches) never waits on them.
+     */
+    function loadFirebaseSdk() {
+        if (global.firebase && global.firebase.firestore && global.firebase.auth) {
+            return Promise.resolve();
+        }
+        if (!sdkPromise) {
+            sdkPromise = SDK_SCRIPTS.reduce(
+                (chain, file) => chain.then(() =>
+                    loadScript(`https://www.gstatic.com/firebasejs/${SDK_VERSION}/${file}`)),
+                Promise.resolve()
+            ).catch((e) => {
+                sdkPromise = null;
+                throw e;
+            });
+        }
+        return sdkPromise;
+    }
+
     async function ensureFirebase() {
         if (initialized) return true;
         if (!isConfigured()) return false;
+
+        await loadFirebaseSdk();
         if (!global.firebase) {
             throw new Error('Firebase SDK not loaded');
         }
@@ -136,6 +181,34 @@
             canEdit: canEdit(),
             isHost: isHost()
         };
+    }
+
+    function setRoomStateFromDoc(roomId, data, overrides) {
+        const me = (data.participants && data.participants[uid()]) || {};
+        roomState = Object.assign({
+            roomId,
+            code: data.code,
+            hostId: data.hostId,
+            status: data.status || 'active',
+            role: me.role || 'viewer',
+            displayName: me.displayName
+                || (roomState && roomState.displayName)
+                || 'Player',
+            participantId: uid(),
+            participants: data.participants || {},
+            game: data.game || null
+        }, overrides || {});
+        return roomState;
+    }
+
+    function applyRemote(game) {
+        if (!game) return;
+        applyingRemote = true;
+        try {
+            emit('game', game);
+        } finally {
+            setTimeout(() => { applyingRemote = false; }, 0);
+        }
     }
 
     function stopPresence() {
@@ -196,27 +269,11 @@
                 const nextGame = data.game || null;
                 const nextGameJson = nextGame ? JSON.stringify(nextGame) : null;
 
-                roomState = {
-                    roomId,
-                    code: data.code,
-                    hostId: data.hostId,
-                    status: data.status || 'active',
-                    role: me.role || 'viewer',
-                    displayName: me.displayName || roomState?.displayName || 'Player',
-                    participantId: uid(),
-                    participants: data.participants || {},
-                    game: nextGame
-                };
-
+                setRoomStateFromDoc(roomId, data);
                 emit('room', getRoomSnapshot());
 
                 if (nextGameJson && nextGameJson !== prevGameJson) {
-                    applyingRemote = true;
-                    try {
-                        emit('game', nextGame);
-                    } finally {
-                        setTimeout(() => { applyingRemote = false; }, 0);
-                    }
+                    applyRemote(nextGame);
                 }
             },
             (err) => {
@@ -232,15 +289,17 @@
 
         const name = (displayName || 'Host').trim() || 'Host';
         const myUid = uid();
-        let code = generateCode();
-        let attempts = 0;
+        let code = null;
 
-        while (attempts < 8) {
-            const existing = await db.collection('roomCodes').doc(code).get();
-            if (!existing.exists) break;
-            code = generateCode();
-            attempts++;
+        for (let attempt = 0; attempt < CODE_ATTEMPTS; attempt++) {
+            const candidate = generateCode();
+            const existing = await db.collection('roomCodes').doc(candidate).get();
+            if (!existing.exists) {
+                code = candidate;
+                break;
+            }
         }
+        if (!code) throw new Error('Could not allocate a room code. Please try again.');
 
         const roomRef = db.collection('rooms').doc();
         const game = sharedGameFromLocal(gameState);
@@ -271,17 +330,13 @@
         });
         await batch.commit();
 
-        roomState = {
-            roomId: roomRef.id,
+        setRoomStateFromDoc(roomRef.id, {
             code,
             hostId: myUid,
             status: 'active',
-            role: 'host',
-            displayName: name,
-            participantId: myUid,
             participants,
             game
-        };
+        }, { displayName: name });
 
         localStorage.setItem('pst_room_id', roomRef.id);
         localStorage.setItem('pst_display_name', name);
@@ -335,17 +390,11 @@
 
         const role = existing ? (existing.role || 'viewer') : 'viewer';
 
-        roomState = {
-            roomId,
+        setRoomStateFromDoc(roomId, data, {
             code: data.code || normalized,
-            hostId: data.hostId,
-            status: data.status || 'active',
             role,
-            displayName: name,
-            participantId: myUid,
-            participants: data.participants || {},
-            game: data.game || null
-        };
+            displayName: name
+        });
 
         localStorage.setItem('pst_room_id', roomId);
         localStorage.setItem('pst_display_name', name);
@@ -353,15 +402,7 @@
         attachListener(roomId);
         startPresence();
         emit('room', getRoomSnapshot());
-
-        if (data.game) {
-            applyingRemote = true;
-            try {
-                emit('game', data.game);
-            } finally {
-                setTimeout(() => { applyingRemote = false; }, 0);
-            }
-        }
+        applyRemote(data.game);
 
         return getRoomSnapshot();
     }
@@ -450,28 +491,15 @@
                 localStorage.removeItem('pst_room_id');
                 return null;
             }
-            roomState = {
-                roomId,
-                code: data.code,
-                hostId: data.hostId,
-                status: data.status || 'active',
-                role: me.role || 'viewer',
-                displayName: me.displayName || localStorage.getItem('pst_display_name') || 'Player',
-                participantId: uid(),
-                participants: data.participants || {},
-                game: data.game || null
-            };
+            setRoomStateFromDoc(roomId, data, {
+                displayName: me.displayName
+                    || localStorage.getItem('pst_display_name')
+                    || 'Player'
+            });
             attachListener(roomId);
             startPresence();
             emit('room', getRoomSnapshot());
-            if (data.game) {
-                applyingRemote = true;
-                try {
-                    emit('game', data.game);
-                } finally {
-                    setTimeout(() => { applyingRemote = false; }, 0);
-                }
-            }
+            applyRemote(data.game);
             return getRoomSnapshot();
         } catch (e) {
             console.warn('tryRestoreRoom', e);

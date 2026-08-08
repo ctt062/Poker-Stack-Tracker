@@ -257,10 +257,7 @@
         </div>
     </div>
 
-    <!-- Firebase compat SDKs (only used when firebase-config.js is filled in) -->
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+    <!-- Firebase compat SDKs are fetched on demand by room.js, so solo mode stays fully local -->
     <script src="firebase-config.js"></script>
     <script src="room.js"></script>
     <script src="script.js"></script>

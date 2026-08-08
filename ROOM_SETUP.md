@@ -67,10 +67,12 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 | Solo | `localStorage` only (unchanged) |
 | Room | One Firestore doc per room + live `onSnapshot` |
 | Auth | Anonymous (`auth.uid`) |
-| Host | Creator; edit; grant/revoke; end room |
+| Host | Creator; edit; grant/revoke; end room (ending drops the host back to solo with the final numbers) |
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |
 | Code | 5-char code in `roomCodes/{code}` → `rooms/{id}` |
+| Solo data | Joining a room stashes your solo session locally and restores it when you leave |
+| SDK | Firebase scripts load on demand, so solo mode still starts offline |
 
 ## Optional deep link
 

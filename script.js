@@ -1,3 +1,11 @@
+const STORAGE_KEY = 'pokerStackTracker';
+const SOLO_BACKUP_KEY = 'pokerStackTracker_soloBackup';
+const KNOWN_ROLES = ['host', 'editor', 'viewer'];
+
+// Room session bookkeeping
+let pendingSoloStash = false;
+let lastEditable = null;
+
 // Game state
 let gameState = {
     blindStructure: { small: 1, big: 2 },
@@ -291,7 +299,12 @@ function canEditGame() {
 
 function assertCanEdit() {
     if (canEditGame()) return true;
-    alert('View only. Ask the host to grant you edit access.');
+    const snap = window.RoomSync ? RoomSync.getRoomSnapshot() : null;
+    if (snap && snap.status === 'ended') {
+        alert('This room has ended. Leave the room to keep tracking on this device.');
+    } else {
+        alert('View only. Ask the host to grant you edit access.');
+    }
     return false;
 }
 
@@ -337,36 +350,7 @@ function updateDisplay() {
     const editable = canEditGame();
 
     gameState.players.forEach(player => {
-        const pnl = calculatePnL(player);
-        const pnlClass = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-zero';
-        const pnlSign = pnl > 0 ? '+' : '';
-        const nameTitle = editable ? 'Click to edit name' : 'View only';
-        const nameClass = editable ? 'player-name' : 'player-name player-name-readonly';
-        const nameClick = editable ? `onclick="editPlayerName(${player.id})"` : '';
-        const disabledAttr = editable ? '' : 'disabled';
-        
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td><span class="${nameClass}" ${nameClick} title="${nameTitle}">${player.name}</span></td>
-            <td>$${player.totalBuyIn.toFixed(2)}</td>
-            <td>
-                <button class="btn btn-stack-minus" onclick="subtractStack(${player.id})" ${disabledAttr}>-</button>
-                <button class="btn btn-success" onclick="addStack(${player.id})" ${disabledAttr}>+</button>
-            </td>
-            <td>
-                <input 
-                    type="number" 
-                    class="cashout-input" 
-                    value="${player.cashOut}" 
-                    min="0" 
-                    step="0.01"
-                    ${disabledAttr}
-                    onchange="updateCashOut(${player.id}, parseFloat(this.value) || 0)"
-                >
-            </td>
-            <td class="${pnlClass}">${pnlSign}$${Math.abs(pnl).toFixed(2)}</td>
-        `;
-        playerTableBody.appendChild(row);
+        playerTableBody.appendChild(buildPlayerRow(player, editable));
     });
     
     // Update total balance
@@ -378,6 +362,65 @@ function updateDisplay() {
     applyEditabilityUI();
 }
 
+// Player data can come from other devices in a room, so rows are built with DOM
+// APIs (never string interpolation) to keep names and ids out of markup.
+function buildPlayerRow(player, editable) {
+    const pnl = calculatePnL(player);
+    const pnlSign = pnl > 0 ? '+' : '';
+    const row = document.createElement('tr');
+
+    const nameCell = document.createElement('td');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = editable ? 'player-name' : 'player-name player-name-readonly';
+    nameSpan.title = editable ? 'Click to edit name' : 'View only';
+    nameSpan.textContent = player.name;
+    if (editable) {
+        nameSpan.addEventListener('click', () => editPlayerName(player.id));
+    }
+    nameCell.appendChild(nameSpan);
+
+    const buyInCell = document.createElement('td');
+    buyInCell.textContent = `$${player.totalBuyIn.toFixed(2)}`;
+
+    const stackCell = document.createElement('td');
+    const minusBtn = document.createElement('button');
+    minusBtn.className = 'btn btn-stack-minus';
+    minusBtn.textContent = '-';
+    minusBtn.disabled = !editable;
+    minusBtn.addEventListener('click', () => subtractStack(player.id));
+    const plusBtn = document.createElement('button');
+    plusBtn.className = 'btn btn-success';
+    plusBtn.textContent = '+';
+    plusBtn.disabled = !editable;
+    plusBtn.addEventListener('click', () => addStack(player.id));
+    stackCell.appendChild(minusBtn);
+    stackCell.appendChild(plusBtn);
+
+    const cashOutCell = document.createElement('td');
+    const cashOutInput = document.createElement('input');
+    cashOutInput.type = 'number';
+    cashOutInput.className = 'cashout-input';
+    cashOutInput.value = String(player.cashOut);
+    cashOutInput.min = '0';
+    cashOutInput.step = '0.01';
+    cashOutInput.disabled = !editable;
+    cashOutInput.addEventListener('change', () => {
+        updateCashOut(player.id, parseFloat(cashOutInput.value) || 0);
+    });
+    cashOutCell.appendChild(cashOutInput);
+
+    const pnlCell = document.createElement('td');
+    pnlCell.className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-zero';
+    pnlCell.textContent = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
+
+    row.appendChild(nameCell);
+    row.appendChild(buyInCell);
+    row.appendChild(stackCell);
+    row.appendChild(cashOutCell);
+    row.appendChild(pnlCell);
+    return row;
+}
+
 function applyEditabilityUI() {
     const editable = canEditGame();
     if (addPlayerBtn) addPlayerBtn.disabled = !editable;
@@ -387,7 +430,7 @@ function applyEditabilityUI() {
 }
 
 function saveGameState() {
-    localStorage.setItem('pokerStackTracker', JSON.stringify(gameState));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
     if (window.RoomSync && RoomSync.isInRoom() && RoomSync.canEdit() && !RoomSync.isApplyingRemote()) {
         RoomSync.pushGameState(gameState).catch((err) => {
             console.error('Failed to sync room', err);
@@ -395,20 +438,97 @@ function saveGameState() {
     }
 }
 
+function toNumber(value, fallback) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+// Room documents are writable by other devices, so every shared field is coerced
+// to the type the rest of the app expects before it touches gameState.
+function normalizeRemoteGame(remoteGame) {
+    if (!remoteGame || typeof remoteGame !== 'object') return null;
+    const normalized = {};
+
+    if (remoteGame.blindStructure && typeof remoteGame.blindStructure === 'object') {
+        normalized.blindStructure = {
+            small: toNumber(remoteGame.blindStructure.small, 0),
+            big: toNumber(remoteGame.blindStructure.big, 0)
+        };
+    }
+    if (remoteGame.stackAmount !== undefined && remoteGame.stackAmount !== null) {
+        normalized.stackAmount = toNumber(remoteGame.stackAmount, gameState.stackAmount);
+    }
+    if (Array.isArray(remoteGame.players)) {
+        normalized.players = remoteGame.players.map((p, index) => ({
+            id: toNumber(p && p.id, index),
+            name: String((p && p.name) || 'Player'),
+            totalBuyIn: toNumber(p && p.totalBuyIn, 0),
+            cashOut: toNumber(p && p.cashOut, 0)
+        }));
+    }
+    if (remoteGame.sessionName) normalized.sessionName = String(remoteGame.sessionName);
+    if (remoteGame.bankerName) normalized.bankerName = String(remoteGame.bankerName);
+
+    return normalized;
+}
+
+function sharedStateKey(source) {
+    return JSON.stringify({
+        blindStructure: source.blindStructure,
+        stackAmount: source.stackAmount,
+        players: source.players,
+        sessionName: source.sessionName,
+        bankerName: source.bankerName
+    });
+}
+
+function stashSoloSnapshot() {
+    if (localStorage.getItem(SOLO_BACKUP_KEY)) return;
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current) localStorage.setItem(SOLO_BACKUP_KEY, current);
+}
+
+function restoreSoloSnapshot() {
+    const backup = localStorage.getItem(SOLO_BACKUP_KEY);
+    if (!backup) return false;
+    localStorage.setItem(STORAGE_KEY, backup);
+    localStorage.removeItem(SOLO_BACKUP_KEY);
+    loadGameState();
+    applyTheme();
+    applyFontSize();
+    updateDisplay();
+    return true;
+}
+
 function applyRemoteGame(remoteGame) {
-    if (!remoteGame) return;
-    gameState.blindStructure = remoteGame.blindStructure || gameState.blindStructure;
-    gameState.stackAmount = remoteGame.stackAmount ?? gameState.stackAmount;
-    gameState.players = Array.isArray(remoteGame.players) ? remoteGame.players : gameState.players;
-    gameState.sessionName = remoteGame.sessionName || gameState.sessionName;
-    gameState.bankerName = remoteGame.bankerName || gameState.bankerName;
+    const remote = normalizeRemoteGame(remoteGame);
+    if (!remote) return;
+
+    const next = {
+        blindStructure: remote.blindStructure || gameState.blindStructure,
+        stackAmount: remote.stackAmount ?? gameState.stackAmount,
+        players: remote.players || gameState.players,
+        sessionName: remote.sessionName || gameState.sessionName,
+        bankerName: remote.bankerName || gameState.bankerName
+    };
+
+    // Joining a room replaces local data: keep a restorable copy of the solo
+    // session, but only when the room would actually overwrite something else.
+    if (pendingSoloStash) {
+        pendingSoloStash = false;
+        if (sharedStateKey(next) !== sharedStateKey(gameState)) {
+            stashSoloSnapshot();
+        }
+    }
+
+    Object.assign(gameState, next);
     // Keep theme prefs local; persist shared fields locally for offline view
-    localStorage.setItem('pokerStackTracker', JSON.stringify(gameState));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
     updateDisplay();
 }
 
 function loadGameState() {
-    const saved = localStorage.getItem('pokerStackTracker');
+    const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
         try {
             gameState = JSON.parse(saved);
@@ -664,7 +784,7 @@ function syncRoomModalPanels(snap) {
         if (roleEl) {
             const perm = snap.canEdit
                 ? 'You can edit stacks and cash-outs.'
-                : 'View only — ask the host to grant edit access.';
+                : 'View only - ask the host to grant edit access.';
             roleEl.textContent = `Joined as ${snap.displayName} (${snap.role}). ${perm}`;
         }
         const endBtn = document.getElementById('endRoomBtn');
@@ -684,63 +804,64 @@ function renderPeopleList(snap) {
     list.innerHTML = '';
 
     if (people.length === 0) {
-        list.innerHTML = '<li class="people-empty">No one here yet.</li>';
+        const empty = document.createElement('li');
+        empty.className = 'people-empty';
+        empty.textContent = 'No one here yet.';
+        list.appendChild(empty);
         return;
     }
 
     people.forEach((p) => {
+        const isMe = snap.participantId === p.id;
+        const role = KNOWN_ROLES.includes(p.role) ? p.role : 'viewer';
+
         const li = document.createElement('li');
         li.className = 'people-item';
-        const onlineDot = p.online ? 'online' : 'offline';
-        const isMe = snap.participantId === p.id;
-        const name = `${p.displayName}${isMe ? ' (you)' : ''}`;
 
-        let actions = '';
-        if (snap.isHost && !isMe && p.role !== 'host') {
-            if (p.role === 'viewer') {
-                actions = `<button type="button" class="btn btn-primary btn-small" data-grant="${p.id}">Allow edit</button>`;
-            } else if (p.role === 'editor') {
-                actions = `<button type="button" class="btn btn-secondary btn-small" data-revoke="${p.id}">Make viewer</button>`;
-            }
+        const main = document.createElement('div');
+        main.className = 'people-main';
+
+        const dot = document.createElement('span');
+        dot.className = `presence-dot ${p.online ? 'online' : 'offline'}`;
+        dot.title = p.online ? 'Recently active' : 'Idle';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'people-name';
+        nameEl.textContent = `${p.displayName}${isMe ? ' (you)' : ''}`;
+
+        const roleEl = document.createElement('span');
+        roleEl.className = `people-role role-${role}`;
+        roleEl.textContent = role;
+
+        main.appendChild(dot);
+        main.appendChild(nameEl);
+        main.appendChild(roleEl);
+
+        const actions = document.createElement('div');
+        actions.className = 'people-actions';
+        if (snap.isHost && !isMe && role !== 'host') {
+            const grant = role === 'viewer';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = grant ? 'btn btn-primary btn-small' : 'btn btn-secondary btn-small';
+            btn.textContent = grant ? 'Allow edit' : 'Make viewer';
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                try {
+                    await RoomSync.setParticipantRole(p.id, grant ? 'editor' : 'viewer');
+                } catch (e) {
+                    alert(e.message || 'Could not update role');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+            actions.appendChild(btn);
         }
 
-        li.innerHTML = `
-            <div class="people-main">
-                <span class="presence-dot ${onlineDot}" title="${p.online ? 'Recently active' : 'Idle'}"></span>
-                <span class="people-name">${escapeHtml(name)}</span>
-                <span class="people-role role-${p.role}">${p.role}</span>
-            </div>
-            <div class="people-actions">${actions}</div>
-        `;
+        li.appendChild(main);
+        li.appendChild(actions);
         list.appendChild(li);
     });
-
-    list.querySelectorAll('[data-grant]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            try {
-                await RoomSync.setParticipantRole(btn.getAttribute('data-grant'), 'editor');
-            } catch (e) {
-                alert(e.message || 'Could not update role');
-            }
-        });
-    });
-    list.querySelectorAll('[data-revoke]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            try {
-                await RoomSync.setParticipantRole(btn.getAttribute('data-revoke'), 'viewer');
-            } catch (e) {
-                alert(e.message || 'Could not update role');
-            }
-        });
-    });
-}
-
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
 
 function openRoomModal() {
@@ -816,6 +937,9 @@ function initRoomUI() {
             const name = document.getElementById('roomDisplayName')?.value?.trim() || 'Player';
             const code = joinCodeInput?.value || '';
             joinBtn.disabled = true;
+            // Joining is the only path where the room replaces this device's
+            // own session, so this is where the solo snapshot is protected.
+            pendingSoloStash = true;
             try {
                 await RoomSync.joinRoom(code, name);
                 syncRoomModalPanels(RoomSync.getRoomSnapshot());
@@ -824,6 +948,7 @@ function initRoomUI() {
                 console.error(e);
                 setRoomError(e.message || 'Could not join room');
             } finally {
+                if (!RoomSync.isInRoom()) pendingSoloStash = false;
                 joinBtn.disabled = false;
             }
         });
@@ -858,13 +983,22 @@ function initRoomUI() {
 
     if (endBtn) {
         endBtn.addEventListener('click', async () => {
-            if (!confirm('End this room for everyone? The code will stop working.')) return;
+            if (!confirm('End this room for everyone? The code will stop working, and this device keeps the final numbers.')) return;
+            endBtn.disabled = true;
             try {
                 await RoomSync.endRoom();
-                updateRoomStatusBar(RoomSync.getRoomSnapshot());
-                syncRoomModalPanels(RoomSync.getRoomSnapshot());
+                // Ending would otherwise leave the host in a read-only room, so
+                // drop back to solo with the final numbers still editable.
+                await RoomSync.leaveRoom();
+                updateRoomStatusBar(null);
+                syncRoomModalPanels(null);
+                applyEditabilityUI();
+                const roomModal = document.getElementById('roomModal');
+                if (roomModal) roomModal.style.display = 'none';
             } catch (e) {
                 setRoomError(e.message || 'Could not end room');
+            } finally {
+                endBtn.disabled = false;
             }
         });
     }
@@ -906,7 +1040,20 @@ function initRoomUI() {
             renderPeopleList(snap);
         }
         applyEditabilityUI();
-        updateDisplay();
+
+        if (!snap) {
+            pendingSoloStash = false;
+            restoreSoloSnapshot();
+        }
+
+        // Room snapshots also fire on presence heartbeats; rebuilding the table
+        // then would steal focus from a cash-out being typed. Game payload
+        // changes arrive on the 'game' event instead.
+        const editable = canEditGame();
+        if (editable !== lastEditable) {
+            lastEditable = editable;
+            updateDisplay();
+        }
     });
 
     RoomSync.on('game', (remoteGame) => {
@@ -924,7 +1071,11 @@ function initRoomUI() {
         if (snap) {
             updateRoomStatusBar(snap);
             applyEditabilityUI();
-        } else if (roomParam && RoomSync.isConfigured()) {
+            return;
+        }
+        // The room is gone: do not strand the device on room data.
+        restoreSoloSnapshot();
+        if (roomParam && RoomSync.isConfigured()) {
             // Offer join UI prefilled
             openRoomModal();
         }
