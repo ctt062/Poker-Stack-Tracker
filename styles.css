@@ -1296,6 +1296,11 @@ button:disabled {
 
 .people-actions {
     flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+    align-items: center;
 }
 
 .people-empty {

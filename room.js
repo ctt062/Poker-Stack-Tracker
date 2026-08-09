@@ -10,6 +10,8 @@
     const CODE_ATTEMPTS = 8;
     const PRESENCE_MS = 20000;
     const STALE_MS = 60000;
+    /** How long a kicked player cannot rejoin the same room. */
+    const KICK_BAN_MS = 5 * 60 * 1000;
     const SDK_VERSION = '10.14.1';
     const SDK_SCRIPTS = [
         'firebase-app-compat.js',
@@ -112,6 +114,41 @@
             const other = (map[id].displayName || '').trim().toLowerCase();
             return other === target;
         });
+    }
+
+    function banUntilMs(ban) {
+        if (!ban) return 0;
+        if (typeof ban.until === 'number') return ban.until;
+        if (ban.until && typeof ban.until.toMillis === 'function') return ban.until.toMillis();
+        if (ban.until && typeof ban.until.seconds === 'number') return ban.until.seconds * 1000;
+        return 0;
+    }
+
+    function formatBanRemaining(ban) {
+        const ms = Math.max(0, banUntilMs(ban) - Date.now());
+        const mins = Math.max(1, Math.ceil(ms / 60000));
+        return mins === 1 ? 'about 1 minute' : `${mins} minutes`;
+    }
+
+    /**
+     * Active kick ban for this user id and/or display name (case-insensitive).
+     * Name match blocks rejoining with the same nickname after a kick.
+     */
+    function getActiveBan(bans, userId, displayName) {
+        const map = bans || {};
+        const now = Date.now();
+        const byUid = userId ? map[userId] : null;
+        if (byUid && banUntilMs(byUid) > now) return byUid;
+
+        const target = (displayName || '').trim().toLowerCase();
+        if (!target) return null;
+        const ids = Object.keys(map);
+        for (let i = 0; i < ids.length; i++) {
+            const ban = map[ids[i]];
+            if (banUntilMs(ban) <= now) continue;
+            if ((ban.displayName || '').trim().toLowerCase() === target) return ban;
+        }
+        return null;
     }
 
     function serverTs() {
@@ -295,12 +332,17 @@
                 const data = snap.data();
                 const me = data.participants && data.participants[uid()];
                 if (!me) {
+                    const ban = getActiveBan(data.bans, uid(), null);
+                    const kickMsg = ban
+                        ? `You were kicked from the room. You can rejoin after ${formatBanRemaining(ban)}.`
+                        : 'You were removed from the room.';
                     roomState = null;
                     stopPresence();
                     detachListener();
                     resetPushState();
+                    localStorage.removeItem('pst_room_id');
                     emit('room', null);
-                    emit('error', 'You were removed from the room.');
+                    emit('error', kickMsg);
                     return;
                 }
 
@@ -416,6 +458,13 @@
         const now = serverTs();
         const existing = data.participants && data.participants[myUid];
 
+        const ban = getActiveBan(data.bans, myUid, name);
+        if (ban) {
+            throw new Error(
+                `You cannot rejoin this room yet (kicked). Try again in ${formatBanRemaining(ban)}.`
+            );
+        }
+
         if (isDisplayNameTaken(data.participants, name, myUid)) {
             throw new Error('That display name is already taken in this room. Choose another.');
         }
@@ -511,6 +560,31 @@
         }
 
         await db.collection('rooms').doc(roomState.roomId).update(updates);
+    }
+
+    /**
+     * Host removes a participant and bans them from rejoining for KICK_BAN_MS.
+     * Ban is keyed by auth uid and stores display name for join-time checks.
+     */
+    async function kickParticipant(participantId) {
+        if (!roomState || !isHost()) throw new Error('Only the host can kick people');
+        if (!participantId) throw new Error('No participant selected');
+        if (participantId === roomState.hostId || participantId === uid()) {
+            throw new Error('Cannot kick the host');
+        }
+        const person = roomState.participants && roomState.participants[participantId];
+        if (!person) throw new Error('That person is not in the room');
+        if (!db) throw new Error('Not connected');
+
+        const until = Date.now() + KICK_BAN_MS;
+        await db.collection('rooms').doc(roomState.roomId).update({
+            [`participants.${participantId}`]: global.firebase.firestore.FieldValue.delete(),
+            [`bans.${participantId}`]: {
+                until,
+                displayName: person.displayName || 'Player'
+            },
+            updatedAt: serverTs()
+        });
     }
 
     async function pushGameState(gameState) {
@@ -637,9 +711,11 @@
         leaveRoom,
         endRoom,
         setParticipantRole,
+        kickParticipant,
         pushGameState,
         tryRestoreRoom,
         on,
-        STALE_MS
+        STALE_MS,
+        KICK_BAN_MS
     };
 })(window);

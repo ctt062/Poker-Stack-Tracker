@@ -874,6 +874,28 @@ function renderPeopleList(snap) {
                 }
             });
             actions.appendChild(btn);
+
+            const kickBtn = document.createElement('button');
+            kickBtn.type = 'button';
+            kickBtn.className = 'btn btn-danger btn-small';
+            kickBtn.textContent = 'Kick';
+            kickBtn.title = 'Remove from room (cannot rejoin for 5 minutes)';
+            kickBtn.addEventListener('click', async () => {
+                const label = p.displayName || 'this person';
+                if (!confirm(`Kick ${label} from the room? They cannot rejoin for 5 minutes.`)) {
+                    return;
+                }
+                kickBtn.disabled = true;
+                btn.disabled = true;
+                try {
+                    await RoomSync.kickParticipant(p.id);
+                } catch (e) {
+                    alert(e.message || 'Could not kick that person');
+                    kickBtn.disabled = false;
+                    btn.disabled = false;
+                }
+            });
+            actions.appendChild(kickBtn);
         }
 
         li.appendChild(main);
