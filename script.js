@@ -932,17 +932,10 @@ function initRoomUI() {
     const leaveBtn = document.getElementById('leaveRoomBtn');
     const endBtn = document.getElementById('endRoomBtn');
     const copyBtn = document.getElementById('copyRoomCodeBtn');
-    const openPeopleBtn = document.getElementById('openPeopleBtn');
     const joinCodeInput = document.getElementById('joinRoomCode');
 
     if (roomBtn) roomBtn.addEventListener('click', openRoomModal);
     if (peopleBtn) peopleBtn.addEventListener('click', openPeopleModal);
-    if (openPeopleBtn) {
-        openPeopleBtn.addEventListener('click', () => {
-            document.getElementById('roomModal').style.display = 'none';
-            openPeopleModal();
-        });
-    }
 
     if (createBtn) {
         createBtn.addEventListener('click', async () => {
