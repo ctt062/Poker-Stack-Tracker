@@ -36,7 +36,18 @@ service cloud.firestore {
       return request.resource.data.hostId == resource.data.hostId
         && request.resource.data.code == resource.data.code
         && request.resource.data.status == resource.data.status
-        && request.resource.data.game == resource.data.game;
+        && request.resource.data.game == resource.data.game
+        // Non-hosts must not clear or rewrite kick bans
+        && request.resource.data.bans == resource.data.bans;
+    }
+
+    // Kick ban stored as bans.{uid}.until (epoch ms). Expired bans are ignored.
+    function isActivelyBanned() {
+      return 'bans' in resource.data
+        && request.auth.uid in resource.data.bans
+        && resource.data.bans[request.auth.uid].keys().hasAll(['until'])
+        && resource.data.bans[request.auth.uid].until is number
+        && resource.data.bans[request.auth.uid].until > request.time.toMillis();
     }
 
     function roomPath(roomId) {
@@ -102,9 +113,11 @@ service cloud.firestore {
           && coreUnchanged()
         )
         // First join as viewer (and re-join after leave): only while room is live
+        // and the joiner is not under an active kick ban
         || (
           !(request.auth.uid in resource.data.participants)
           && resource.data.status == 'active'
+          && !isActivelyBanned()
           && changedKeys().hasOnly(['participants', 'updatedAt'])
           && onlyMyParticipantChanged()
           && coreUnchanged()
