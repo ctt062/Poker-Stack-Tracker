@@ -355,11 +355,12 @@ body.compact-mode .btn-primary {
     padding: 6px 10px;
 }
 
-body.compact-mode .btn-success,
+body.compact-mode .btn-stack-plus,
 body.compact-mode .btn-stack-minus {
     padding: 3px 8px;
     font-size: 13px;
     min-width: 28px;
+    min-height: 28px;
 }
 
 body.compact-mode .btn-theme {
@@ -404,7 +405,7 @@ body.compact-mode .balance-section h3 {
 }
 
 body.compact-mode #totalBalance {
-    font-size: 14px;
+    font-size: inherit; /* match compact h3 (13px) */
 }
 
 body.compact-mode .player-count {
@@ -492,22 +493,40 @@ body.compact-mode td:nth-child(5) {
     width: 20%;
 }
 
-.btn-stack-minus {
-    background-color: var(--accent-warning);
+.btn-stack-minus,
+.btn-stack-plus {
     color: white;
     padding: 6px 14px;
     font-size: 14px;
     font-weight: 600;
+    line-height: 1;
     margin-right: 6px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     min-width: 36px;
+    min-height: 36px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
+}
+
+.btn-stack-minus {
+    background-color: var(--accent-warning);
+}
+
+.btn-stack-plus {
+    background-color: var(--accent-primary);
+    margin-right: 0;
 }
 
 .btn-stack-minus:hover {
     background-color: #ea580c;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-stack-plus:hover {
+    background-color: var(--accent-hover);
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -655,7 +674,7 @@ tbody td {
 #totalBalance {
     font-weight: 600;
     color: var(--accent-primary);
-    font-size: 14px;
+    font-size: inherit; /* match .balance-section h3 (28px / compact 13px) */
 }
 
 .action-buttons {
@@ -980,13 +999,18 @@ tbody td {
         border-radius: 3px;
     }
 
-    body.compact-mode .btn-success,
+    body.compact-mode .btn-stack-plus,
     body.compact-mode .btn-stack-minus {
         padding: 2px 5px;
         font-size: 11px;
         border-radius: 3px;
         margin-right: 2px;
         min-width: 24px;
+        min-height: 24px;
+    }
+
+    body.compact-mode .btn-stack-plus {
+        margin-right: 0;
     }
 
     body.compact-mode .control-group input {
@@ -1020,7 +1044,7 @@ tbody td {
     }
 
     body.compact-mode #totalBalance {
-        font-size: 13px;
+        font-size: inherit; /* match compact h3 in this breakpoint */
     }
 
     body.compact-mode .player-name {
