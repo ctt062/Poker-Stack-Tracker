@@ -397,7 +397,7 @@ function buildPlayerRow(player, editable) {
     minusBtn.disabled = !editable;
     minusBtn.addEventListener('click', () => subtractStack(player.id));
     const plusBtn = document.createElement('button');
-    plusBtn.className = 'btn btn-success';
+    plusBtn.className = 'btn btn-stack-plus';
     plusBtn.textContent = '+';
     plusBtn.disabled = !editable;
     plusBtn.addEventListener('click', () => addStack(player.id));
