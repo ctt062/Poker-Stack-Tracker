@@ -91,6 +91,29 @@
         }));
     }
 
+    /** Require a non-empty display name (no silent defaults). */
+    function requireDisplayName(displayName) {
+        const name = (displayName == null ? '' : String(displayName)).trim();
+        if (!name) throw new Error('Enter a display name');
+        if (name.length > 32) throw new Error('Display name must be 32 characters or fewer');
+        return name;
+    }
+
+    /**
+     * True if another participant already uses this name (case-insensitive).
+     * exceptUid is ignored so a rejoining user can keep their own name.
+     */
+    function isDisplayNameTaken(participants, name, exceptUid) {
+        const target = name.trim().toLowerCase();
+        if (!target) return false;
+        const map = participants || {};
+        return Object.keys(map).some((id) => {
+            if (exceptUid && id === exceptUid) return false;
+            const other = (map[id].displayName || '').trim().toLowerCase();
+            return other === target;
+        });
+    }
+
     function serverTs() {
         return global.firebase.firestore.FieldValue.serverTimestamp();
     }
@@ -310,7 +333,7 @@
         await ensureFirebase();
         if (!initialized) throw new Error('Firebase is not configured. See ROOM_SETUP.md');
 
-        const name = (displayName || 'Host').trim() || 'Host';
+        const name = requireDisplayName(displayName);
         const myUid = uid();
         let code = null;
 
@@ -377,7 +400,7 @@
         const normalized = (code || '').trim().toUpperCase();
         if (normalized.length < 4) throw new Error('Enter a valid room code');
 
-        const name = (displayName || 'Player').trim() || 'Player';
+        const name = requireDisplayName(displayName);
         const codeSnap = await db.collection('roomCodes').doc(normalized).get();
         if (!codeSnap.exists) throw new Error('Room not found. Check the code and try again.');
 
@@ -392,6 +415,10 @@
         const myUid = uid();
         const now = serverTs();
         const existing = data.participants && data.participants[myUid];
+
+        if (isDisplayNameTaken(data.participants, name, myUid)) {
+            throw new Error('That display name is already taken in this room. Choose another.');
+        }
 
         if (existing) {
             await roomRef.update({
