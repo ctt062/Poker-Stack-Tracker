@@ -13,11 +13,23 @@ A minimalist web application for tracking chip stacks during poker games.
 - **P&L Calculation**: Automatic profit and loss calculation per player
 - **Balance Overview**: View total cash balance across all players
 - **Data Persistence**: Automatically saves game state to browser localStorage
+- **Rooms (multi-device sync)**: Create a short room code so other phones join the same live session; host edits by default and can grant edit access
 - **Responsive Design**: Works on desktop and mobile devices
 - **Progressive Web App (PWA)**: Installable as a native app on your phone
-- **Offline Support**: Works offline with service worker caching
+- **Offline Support**: Works offline with service worker caching (solo mode)
 - **Dark/Light Mode**: Toggle between dark and light themes
 - **Compact Mode**: Toggle between normal and compact font sizes
+
+## Rooms (optional)
+
+Solo play needs no account or server. For multi-device sync:
+
+1. Follow **[ROOM_SETUP.md](ROOM_SETUP.md)** (Firebase Anonymous Auth + Firestore)
+2. Fill in `firebase-config.js` and publish `firestore.rules`
+3. **Room → Create room** on the host phone, share the code
+4. Others **Join** as viewers; host uses **People** to allow edit when needed
+
+Product model: a **Room** is one live session (not a persistent Club). A Club layer can be added later on top of rooms.
 
 ## Installation as PWA
 

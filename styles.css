@@ -781,197 +781,197 @@ tbody td {
     body {
         padding: 10px;
     }
-    
+
     .container {
         padding: 20px 12px;
     }
-    
+
     h1 {
         font-size: 20px;
     }
-    
+
     .header {
         margin-bottom: 20px;
         padding-bottom: 16px;
     }
-    
+
     .control-row {
         gap: 6px;
         margin-bottom: 10px;
     }
-    
+
     .control-row:first-child {
         flex-wrap: nowrap;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         gap: 4px;
     }
-    
+
     .control-row:first-child .control-group {
         flex-shrink: 0;
         margin: 0;
     }
-    
+
     .control-row:first-child .btn {
         padding: 8px 12px;
         font-size: 12px;
     }
-    
+
     .control-row:first-child .blind-display {
         padding: 4px 8px;
         font-size: 12px;
     }
-    
+
     .control-row:first-child .control-group input {
         padding: 6px 8px;
         font-size: 12px;
         width: 80px;
     }
-    
+
     .control-row:first-child .player-count {
         padding: 4px 8px;
         font-size: 12px;
     }
-    
+
     .control-row .control-group {
         gap: 4px;
     }
-    
+
     .control-row:nth-child(2) {
         justify-content: center;
     }
-    
+
     .control-row:nth-child(2) .session-name,
     .control-row:nth-child(2) .banker-name {
         flex: 1;
         min-width: 100px;
     }
-    
+
     .control-row:last-child {
         justify-content: center;
     }
-    
+
     .control-row:last-child .control-group {
         flex: 1;
     }
-    
+
     .control-row:last-child #addPlayerBtn {
         flex: 1;
         min-width: 120px;
     }
-    
+
     table {
         font-size: 12px;
     }
-    
+
     th, td {
         padding: 10px 6px;
         font-size: 12px;
     }
-    
+
     th {
         font-size: 11px;
     }
-    
+
     .cashout-input {
         width: 70px;
         font-size: 12px;
     }
-    
+
     .modal-content {
         padding: 24px;
         margin: 20% auto;
         width: 95%;
     }
-    
+
     /* Extra compact for mobile when compact mode is on */
     body.compact-mode .container {
         padding: 12px 6px;
     }
-    
+
     body.compact-mode h1 {
         font-size: 14px;
     }
-    
+
     body.compact-mode .header {
         margin-bottom: 12px;
         padding-bottom: 10px;
     }
-    
+
     body.compact-mode .header-buttons {
         gap: 6px;
     }
-    
+
     body.compact-mode .btn-theme {
         width: 28px;
         height: 28px;
         padding: 5px;
     }
-    
+
     body.compact-mode .theme-icon {
         width: 12px;
         height: 12px;
     }
-    
+
     body.compact-mode .controls {
         margin-bottom: 10px;
     }
-    
+
     body.compact-mode .control-row {
         gap: 6px;
         margin-bottom: 6px;
     }
-    
+
     body.compact-mode .control-row:last-child {
         padding-top: 6px;
     }
-    
+
     body.compact-mode table {
         font-size: 9px;
         table-layout: fixed;
     }
-    
+
     body.compact-mode th,
     body.compact-mode td {
         padding: 5px 2px;
         font-size: 9px;
         word-wrap: break-word;
     }
-    
+
     body.compact-mode th {
         font-size: 8px;
         padding: 6px 2px;
         letter-spacing: 0;
     }
-    
+
     body.compact-mode th:nth-child(1),
     body.compact-mode td:nth-child(1) {
         width: 22%;
         font-size: 9px;
     }
-    
+
     body.compact-mode th:nth-child(2),
     body.compact-mode td:nth-child(2) {
         width: 16%;
         font-size: 8px;
     }
-    
+
     body.compact-mode th:nth-child(3),
     body.compact-mode td:nth-child(3) {
         width: 24%;
     }
-    
+
     body.compact-mode th:nth-child(4),
     body.compact-mode td:nth-child(4) {
         width: 18%;
     }
-    
+
     body.compact-mode th:nth-child(5),
     body.compact-mode td:nth-child(5) {
         width: 20%;
         font-size: 9px;
     }
-    
+
     body.compact-mode .cashout-input {
         width: 100%;
         max-width: 50px;
@@ -979,7 +979,7 @@ tbody td {
         font-size: 9px;
         border-radius: 3px;
     }
-    
+
     body.compact-mode .btn-success,
     body.compact-mode .btn-stack-minus {
         padding: 2px 5px;
@@ -988,42 +988,324 @@ tbody td {
         margin-right: 2px;
         min-width: 24px;
     }
-    
+
     body.compact-mode .control-group input {
         width: 55px;
         font-size: 9px;
         padding: 4px 5px;
     }
-    
+
     body.compact-mode .control-group label {
         font-size: 10px;
     }
-    
+
     body.compact-mode .btn {
         padding: 5px 8px;
         font-size: 10px;
     }
-    
+
     body.compact-mode .player-count,
     body.compact-mode .blind-display {
         font-size: 9px;
         padding: 2px 5px;
     }
-    
+
     body.compact-mode .balance-section {
         padding: 10px;
         margin-bottom: 12px;
     }
-    
+
     body.compact-mode .balance-section h3 {
         font-size: 12px;
     }
-    
+
     body.compact-mode #totalBalance {
         font-size: 13px;
     }
-    
+
     body.compact-mode .player-name {
         font-size: 9px;
+    }
+}
+
+/* ---- Room multiplayer ---- */
+.room-row {
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.room-status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.room-status-solo {
+    color: var(--text-secondary);
+    opacity: 0.9;
+}
+
+.room-status-live {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.room-status-ended {
+    border-color: var(--accent-warning);
+    color: var(--accent-warning);
+}
+
+.room-code-badge,
+.room-role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.room-code-badge {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    letter-spacing: 0.12em;
+}
+
+.room-role-badge[data-role="host"],
+.room-role-badge[data-role="editor"] {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.room-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--table-hover);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.btn:disabled,
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.room-hint {
+    color: var(--text-secondary);
+    opacity: 0.85;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.room-alert {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid var(--accent-warning);
+    color: var(--text-primary);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.room-alert code {
+    font-size: 12px;
+}
+
+.room-solo-actions {
+    margin-bottom: 12px;
+}
+
+.room-divider {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    margin: 16px 0;
+    position: relative;
+}
+
+.room-join-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.room-code-input {
+    flex: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 600;
+}
+
+.room-code-display {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    margin-bottom: 12px;
+}
+
+.room-code-label {
+    font-size: 12px;
+    opacity: 0.75;
+    width: 100%;
+}
+
+.room-code-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: var(--accent-primary);
+}
+
+.room-active-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.room-error {
+    margin-top: 12px;
+    color: #e74c3c;
+    font-size: 13px;
+}
+
+.people-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.people-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.people-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.people-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.people-role {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    opacity: 0.9;
+}
+
+.people-role.role-host,
+.people-role.role-editor {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.people-actions {
+    flex-shrink: 0;
+}
+
+.people-empty {
+    opacity: 0.7;
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+.presence-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.presence-dot.online {
+    background: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.2);
+}
+
+.presence-dot.offline {
+    background: #9ca3af;
+}
+
+.player-name-readonly {
+    cursor: default;
+    text-decoration: none;
+}
+
+body.room-view-only .session-name,
+body.room-view-only .banker-name,
+body.room-view-only .blind-display {
+    cursor: default;
+    opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+    .room-code-value {
+        font-size: 22px;
+    }
+
+    .people-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .room-join-row {
+        flex-direction: column;
     }
 }
