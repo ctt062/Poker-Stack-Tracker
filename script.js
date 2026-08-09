@@ -929,7 +929,12 @@ function initRoomUI() {
                 setRoomError('Firebase is not configured. See ROOM_SETUP.md.');
                 return;
             }
-            const name = document.getElementById('roomDisplayName')?.value?.trim() || 'Host';
+            const name = document.getElementById('roomDisplayName')?.value?.trim() || '';
+            if (!name) {
+                setRoomError('Enter a display name before creating a room.');
+                document.getElementById('roomDisplayName')?.focus();
+                return;
+            }
             createBtn.disabled = true;
             try {
                 await RoomSync.createRoom(name, gameState);
@@ -952,8 +957,18 @@ function initRoomUI() {
                 setRoomError('Firebase is not configured. See ROOM_SETUP.md.');
                 return;
             }
-            const name = document.getElementById('roomDisplayName')?.value?.trim() || 'Player';
+            const name = document.getElementById('roomDisplayName')?.value?.trim() || '';
             const code = joinCodeInput?.value || '';
+            if (!name) {
+                setRoomError('Enter a display name before joining.');
+                document.getElementById('roomDisplayName')?.focus();
+                return;
+            }
+            if (!code.trim()) {
+                setRoomError('Enter a room code.');
+                joinCodeInput?.focus();
+                return;
+            }
             joinBtn.disabled = true;
             // Joining is the only path where the room replaces this device's
             // own session, so this is where the solo snapshot is protected.

@@ -1150,6 +1150,19 @@ button:disabled {
     margin-bottom: 16px;
 }
 
+.room-field-hint {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+    line-height: 1.35;
+}
+
+.required-mark {
+    color: var(--accent-secondary);
+    font-weight: 600;
+}
+
 .room-alert {
     background: rgba(245, 158, 11, 0.12);
     border: 1px solid var(--accent-warning);

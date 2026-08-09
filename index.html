@@ -216,8 +216,9 @@
 
             <div id="roomSoloPanel">
                 <div class="form-group">
-                    <label>Your display name</label>
-                    <input type="text" id="roomDisplayName" placeholder="e.g. Alex" maxlength="32" autocomplete="nickname">
+                    <label for="roomDisplayName">Your display name <span class="required-mark">*</span></label>
+                    <input type="text" id="roomDisplayName" placeholder="e.g. Alex" maxlength="32" autocomplete="nickname" required>
+                    <p class="room-field-hint">Required. Must be unique in the room (not already used by someone else).</p>
                 </div>
                 <div class="room-solo-actions">
                     <button type="button" id="createRoomBtn" class="btn btn-primary">Create room</button>
