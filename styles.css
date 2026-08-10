@@ -297,6 +297,23 @@ body.dark-mode .moon-icon {
     transform: rotate(0deg);
 }
 
+/* Font-size toggle: magnifier with - (zoom out) / + (zoom in) */
+.magnify-out-icon {
+    opacity: 1;
+}
+
+.magnify-in-icon {
+    opacity: 0;
+}
+
+body.compact-mode .magnify-out-icon {
+    opacity: 0;
+}
+
+body.compact-mode .magnify-in-icon {
+    opacity: 1;
+}
+
 body:not(.dark-mode) .theme-icon {
     color: #6b7280;
 }
