@@ -12,6 +12,9 @@
     const STALE_MS = 60000;
     /** How long a kicked player cannot rejoin the same room. */
     const KICK_BAN_MS = 5 * 60 * 1000;
+    /** Empty rooms are deleted this long after the last person leaves. */
+    const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
+    const ABANDON_CLEANUP_KEY = 'pst_abandon_cleanup';
     const SDK_VERSION = '10.14.1';
     const SDK_SCRIPTS = [
         'firebase-app-compat.js',
@@ -210,6 +213,8 @@
         }
 
         initialized = true;
+        // Best-effort purge of rooms we abandoned earlier (10 min TTL)
+        runPendingAbandonCleanup().catch(() => {});
         return true;
     }
 
@@ -219,7 +224,7 @@
 
     function canEdit() {
         if (!roomState) return true; // solo mode
-        if (roomState.status === 'ended') return false;
+        if (roomState.status === 'ended' || roomState.status === 'abandoned') return false;
         return roomState.role === 'host' || roomState.role === 'editor';
     }
 
@@ -453,6 +458,12 @@
 
         const data = roomSnap.data();
         if (data.status === 'ended') throw new Error('This room has ended.');
+        if (data.status === 'abandoned') {
+            throw new Error('This room is closed (everyone left).');
+        }
+        if (data.status && data.status !== 'active') {
+            throw new Error('This room is not available to join.');
+        }
 
         const myUid = uid();
         const now = serverTs();
@@ -469,28 +480,42 @@
             throw new Error('That display name is already taken in this room. Choose another.');
         }
 
-        if (existing) {
-            await roomRef.update({
-                [`participants.${myUid}.displayName`]: name,
-                [`participants.${myUid}.lastSeen`]: now,
-                updatedAt: now
-            });
-        } else {
-            await roomRef.update({
-                [`participants.${myUid}`]: {
-                    displayName: name,
-                    role: 'viewer',
-                    lastSeen: now,
-                    joinedAt: now
-                },
-                updatedAt: now
-            });
+        try {
+            if (existing) {
+                await roomRef.update({
+                    [`participants.${myUid}.displayName`]: name,
+                    [`participants.${myUid}.lastSeen`]: now,
+                    updatedAt: now
+                });
+            } else {
+                await roomRef.update({
+                    [`participants.${myUid}`]: {
+                        displayName: name,
+                        role: 'viewer',
+                        lastSeen: now,
+                        joinedAt: now
+                    },
+                    updatedAt: now
+                });
+            }
+        } catch (err) {
+            const code = err && (err.code || err.message || '');
+            if (String(code).includes('permission') || String(code).includes('Permission')) {
+                throw new Error(
+                    'Could not join (permission denied). The room may have closed, you may be kick-banned, or rules need a refresh. Try again in a moment.'
+                );
+            }
+            throw err;
         }
 
-        const role = existing ? (existing.role || 'viewer') : 'viewer';
+        // Re-read so host transfer / game state is fresh after join
+        const joinedSnap = await roomRef.get();
+        const joinedData = joinedSnap.exists ? joinedSnap.data() : data;
+        const me = joinedData.participants && joinedData.participants[myUid];
+        const role = (me && me.role) || (existing ? (existing.role || 'viewer') : 'viewer');
 
-        setRoomStateFromDoc(roomId, data, {
-            code: data.code || normalized,
+        setRoomStateFromDoc(roomId, joinedData, {
+            code: joinedData.code || normalized,
             role,
             displayName: name
         });
@@ -501,9 +526,164 @@
         attachListener(roomId);
         startPresence();
         emit('room', getRoomSnapshot());
-        applyRemote(data.game);
+        applyRemote(joinedData.game);
 
         return getRoomSnapshot();
+    }
+
+    function participantJoinedAtMs(p) {
+        if (!p || p.joinedAt == null) return Number.MAX_SAFE_INTEGER;
+        if (typeof p.joinedAt.toMillis === 'function') return p.joinedAt.toMillis();
+        if (typeof p.joinedAt.seconds === 'number') return p.joinedAt.seconds * 1000;
+        if (typeof p.joinedAt === 'number') return p.joinedAt;
+        const t = Date.parse(p.joinedAt);
+        return Number.isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
+    }
+
+    /** Earliest joiner among remaining participants (stable order for host handoff). */
+    function pickNextHost(participants, excludeUid) {
+        const ids = Object.keys(participants || {}).filter((id) => id !== excludeUid);
+        if (ids.length === 0) return null;
+        ids.sort((a, b) => {
+            const ja = participantJoinedAtMs(participants[a]);
+            const jb = participantJoinedAtMs(participants[b]);
+            return ja - jb || a.localeCompare(b);
+        });
+        return { id: ids[0], participant: participants[ids[0]] };
+    }
+
+    async function deleteRoomCode(code) {
+        if (!code || !db) return;
+        try {
+            await db.collection('roomCodes').doc(code).delete();
+        } catch (e) {
+            console.warn('deleteRoomCode', e);
+        }
+    }
+
+    function scheduleAbandonCleanup(roomId, emptyAt) {
+        if (!roomId) return;
+        try {
+            localStorage.setItem(ABANDON_CLEANUP_KEY, JSON.stringify({ roomId, emptyAt }));
+        } catch (e) { /* ignore */ }
+        const delay = Math.max(1000, emptyAt + EMPTY_ROOM_TTL_MS - Date.now() + 500);
+        setTimeout(() => {
+            purgeAbandonedRoom(roomId, emptyAt).catch(() => {});
+        }, delay);
+    }
+
+    async function purgeAbandonedRoom(roomId, expectedEmptyAt) {
+        if (!roomId || !isConfigured()) return;
+        try {
+            await ensureFirebase();
+            if (!db) return;
+            const snap = await db.collection('rooms').doc(roomId).get();
+            if (!snap.exists) {
+                clearAbandonCleanup(roomId);
+                return;
+            }
+            const data = snap.data();
+            if (data.status !== 'abandoned') {
+                clearAbandonCleanup(roomId);
+                return;
+            }
+            const emptyAt = typeof data.emptyAt === 'number' ? data.emptyAt : expectedEmptyAt;
+            if (Date.now() < emptyAt + EMPTY_ROOM_TTL_MS) {
+                scheduleAbandonCleanup(roomId, emptyAt);
+                return;
+            }
+            await db.collection('rooms').doc(roomId).delete();
+            if (data.code) await deleteRoomCode(data.code);
+            clearAbandonCleanup(roomId);
+        } catch (e) {
+            console.warn('purgeAbandonedRoom', e);
+        }
+    }
+
+    function clearAbandonCleanup(roomId) {
+        try {
+            const raw = localStorage.getItem(ABANDON_CLEANUP_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!roomId || parsed.roomId === roomId) {
+                localStorage.removeItem(ABANDON_CLEANUP_KEY);
+            }
+        } catch (e) {
+            localStorage.removeItem(ABANDON_CLEANUP_KEY);
+        }
+    }
+
+    async function runPendingAbandonCleanup() {
+        try {
+            const raw = localStorage.getItem(ABANDON_CLEANUP_KEY);
+            if (!raw) return;
+            const { roomId, emptyAt } = JSON.parse(raw);
+            if (roomId) await purgeAbandonedRoom(roomId, emptyAt || 0);
+        } catch (e) {
+            console.warn('runPendingAbandonCleanup', e);
+        }
+    }
+
+    /**
+     * Apply leave against a fresh room snapshot: transfer host if needed,
+     * or abandon the room when the last person leaves.
+     */
+    async function performLeave(prev) {
+        if (!prev || !db || !uid()) return;
+        const roomRef = db.collection('rooms').doc(prev.roomId);
+        const snap = await roomRef.get();
+        if (!snap.exists) return;
+
+        const data = snap.data();
+        const participants = Object.assign({}, data.participants || {});
+        const myUid = uid();
+        if (!(myUid in participants)) return;
+
+        const others = Object.keys(participants).filter((id) => id !== myUid);
+
+        // Last person out: close the session; delete after EMPTY_ROOM_TTL_MS
+        if (others.length === 0) {
+            const emptyAt = Date.now();
+            await roomRef.update({
+                status: 'abandoned',
+                emptyAt,
+                participants: {},
+                updatedAt: serverTs()
+            });
+            await deleteRoomCode(data.code || prev.code);
+            scheduleAbandonCleanup(prev.roomId, emptyAt);
+            return;
+        }
+
+        // Host leaves while others remain: hand host to earliest joiner
+        if (data.hostId === myUid || (participants[myUid] && participants[myUid].role === 'host')) {
+            const next = pickNextHost(participants, myUid);
+            if (!next) {
+                const emptyAt = Date.now();
+                await roomRef.update({
+                    status: 'abandoned',
+                    emptyAt,
+                    participants: {},
+                    updatedAt: serverTs()
+                });
+                await deleteRoomCode(data.code || prev.code);
+                scheduleAbandonCleanup(prev.roomId, emptyAt);
+                return;
+            }
+            await roomRef.update({
+                hostId: next.id,
+                [`participants.${next.id}.role`]: 'host',
+                [`participants.${myUid}`]: global.firebase.firestore.FieldValue.delete(),
+                updatedAt: serverTs()
+            });
+            return;
+        }
+
+        // Regular guest leave
+        await roomRef.update({
+            [`participants.${myUid}`]: global.firebase.firestore.FieldValue.delete(),
+            updatedAt: serverTs()
+        });
     }
 
     async function leaveRoom() {
@@ -515,15 +695,11 @@
         localStorage.removeItem('pst_room_id');
         emit('room', null);
 
-        if (prev && db && uid() && prev.role !== 'host') {
-            try {
-                await db.collection('rooms').doc(prev.roomId).update({
-                    [`participants.${uid()}`]: global.firebase.firestore.FieldValue.delete(),
-                    updatedAt: serverTs()
-                });
-            } catch (e) {
-                console.warn('leaveRoom cleanup', e);
-            }
+        if (!prev || !db || !uid()) return;
+        try {
+            await performLeave(prev);
+        } catch (e) {
+            console.warn('leaveRoom cleanup', e);
         }
     }
 
@@ -589,7 +765,7 @@
 
     async function pushGameState(gameState) {
         if (!roomState || !canEdit() || applyingRemote) return;
-        if (roomState.status === 'ended') return;
+        if (roomState.status === 'ended' || roomState.status === 'abandoned') return;
         if (!db) return;
 
         pendingPushGame = sharedGameFromLocal(gameState);
@@ -601,6 +777,7 @@
                 pendingPushGame
                 && roomState
                 && roomState.status !== 'ended'
+                && roomState.status !== 'abandoned'
                 && db
                 && sessionAtEnqueue === pushSessionId
             ) {
@@ -637,6 +814,7 @@
 
     async function tryRestoreRoom() {
         if (!isConfigured()) return null;
+        await runPendingAbandonCleanup();
         const roomId = localStorage.getItem('pst_room_id');
         if (!roomId) return null;
         try {
@@ -647,6 +825,15 @@
                 return null;
             }
             const data = snap.data();
+            if (data.status === 'abandoned') {
+                localStorage.removeItem('pst_room_id');
+                await purgeAbandonedRoom(roomId, data.emptyAt || 0);
+                return null;
+            }
+            if (data.status === 'ended') {
+                localStorage.removeItem('pst_room_id');
+                return null;
+            }
             const me = data.participants && data.participants[uid()];
             if (!me) {
                 localStorage.removeItem('pst_room_id');

@@ -32,13 +32,14 @@ service cloud.firestore {
         .hasOnly([request.auth.uid]);
     }
 
-    function coreUnchanged() {
+    // Stable shared fields for non-host writers. Prefer "not touched" over
+    // map equality so missing optional fields (e.g. bans) never break joins.
+    function coreFieldsStable() {
       return request.resource.data.hostId == resource.data.hostId
         && request.resource.data.code == resource.data.code
         && request.resource.data.status == resource.data.status
         && request.resource.data.game == resource.data.game
-        // Non-hosts must not clear or rewrite kick bans
-        && request.resource.data.bans == resource.data.bans;
+        && !changedKeys().hasAny(['bans', 'emptyAt']);
     }
 
     // Kick ban stored as bans.{uid}.until (epoch ms). Expired bans are ignored.
@@ -48,6 +49,13 @@ service cloud.firestore {
         && resource.data.bans[request.auth.uid].keys().hasAll(['until'])
         && resource.data.bans[request.auth.uid].until is number
         && resource.data.bans[request.auth.uid].until > request.time.toMillis();
+    }
+
+    function isAbandonedPastTtl() {
+      return resource.data.status == 'abandoned'
+        && 'emptyAt' in resource.data
+        && resource.data.emptyAt is number
+        && request.time.toMillis() > resource.data.emptyAt + 600000;
     }
 
     function roomPath(roomId) {
@@ -61,6 +69,16 @@ service cloud.firestore {
         || get(roomPath(roomId)).data.hostId == request.auth.uid;
     }
 
+    // Anyone signed in may delete a room code when the room is gone, abandoned,
+    // or they are still the host (end room / last leave).
+    function canDeleteRoomCode() {
+      return isSignedIn() && (
+        !exists(roomPath(resource.data.roomId))
+        || get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid
+        || get(roomPath(resource.data.roomId)).data.status in ['ended', 'abandoned']
+      );
+    }
+
     // Short code -> roomId (code secrecy is the main join gate, so codes and
     // rooms must never be enumerable: single-document gets only).
     match /roomCodes/{code} {
@@ -70,8 +88,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['roomId', 'createdAt'])
         && request.resource.data.roomId is string
         && ownsRoomOrRoomMissing(request.resource.data.roomId);
-      allow delete: if isSignedIn()
-        && ownsRoomOrRoomMissing(resource.data.roomId);
+      allow delete: if canDeleteRoomCode();
       allow update: if false;
     }
 
@@ -86,47 +103,60 @@ service cloud.firestore {
         && request.resource.data.status == 'active';
 
       allow update: if isSignedIn() && (
-        // Host: full control (roles, end room, game, etc.)
+        // Host: full control (roles, kick, transfer, abandon, game, etc.)
         isHost()
-        // Editor/host role: game state only, and only while the room is live
+        // Editor: game state only while live
         || (
           canEditGame()
           && changedKeys().hasOnly(['game', 'updatedAt'])
           && resource.data.status == 'active'
         )
-        // Existing participant: presence / rename self only (role fixed unless host)
+        // Existing participant: presence / rename self only
         || (
           isParticipant()
+          && resource.data.status == 'active'
           && changedKeys().hasOnly(['participants', 'updatedAt'])
           && onlyMyParticipantChanged()
           && request.auth.uid in request.resource.data.participants
           && request.resource.data.participants[request.auth.uid].role
             == resource.data.participants[request.auth.uid].role
-          && coreUnchanged()
+          && coreFieldsStable()
         )
-        // Leaving: remove yourself and nobody else
+        // Leaving: remove yourself only (others remain)
         || (
           isParticipant()
           && changedKeys().hasOnly(['participants', 'updatedAt'])
           && onlyMyParticipantChanged()
           && !(request.auth.uid in request.resource.data.participants)
-          && coreUnchanged()
+          && coreFieldsStable()
         )
-        // First join as viewer (and re-join after leave): only while room is live
-        // and the joiner is not under an active kick ban
+        // Last person leaving: mark abandoned so the room can be purged later
+        || (
+          isParticipant()
+          && resource.data.status == 'active'
+          && resource.data.participants.keys().hasOnly([request.auth.uid])
+          && request.resource.data.status == 'abandoned'
+          && request.resource.data.participants.keys().size() == 0
+          && 'emptyAt' in request.resource.data
+          && request.resource.data.emptyAt is number
+          && request.resource.data.code == resource.data.code
+          && request.resource.data.game == resource.data.game
+        )
+        // First join / re-join as viewer while room is live and not banned
         || (
           !(request.auth.uid in resource.data.participants)
           && resource.data.status == 'active'
           && !isActivelyBanned()
           && changedKeys().hasOnly(['participants', 'updatedAt'])
           && onlyMyParticipantChanged()
-          && coreUnchanged()
+          && coreFieldsStable()
           && request.auth.uid in request.resource.data.participants
           && request.resource.data.participants[request.auth.uid].role == 'viewer'
         )
       );
 
-      allow delete: if isHost();
+      // Host can delete anytime; anyone can purge abandoned rooms after 10 minutes
+      allow delete: if isHost() || isAbandonedPastTtl();
     }
   }
 }
