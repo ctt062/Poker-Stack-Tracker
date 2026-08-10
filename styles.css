@@ -72,6 +72,53 @@ body {
 .header-buttons {
     display: flex;
     gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.github-repo-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.github-repo-link:hover {
+    background-color: var(--table-hover);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.github-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.github-link-text {
+    letter-spacing: -0.01em;
+}
+
+body.compact-mode .github-repo-link {
+    padding: 4px 8px;
+    font-size: 11px;
+    gap: 4px;
+}
+
+body.compact-mode .github-icon {
+    width: 14px;
+    height: 14px;
 }
 
 h1 {
