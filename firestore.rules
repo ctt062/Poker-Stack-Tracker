@@ -92,6 +92,35 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Globally unique display names. Doc id is the lowercase trimmed name.
+    match /displayNames/{nameKey} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasAll(['uid', 'displayName', 'nameKey'])
+        && request.resource.data.nameKey == nameKey
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 32
+        && nameKey == request.resource.data.displayName.trim().lower();
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.nameKey == nameKey
+        && nameKey == request.resource.data.displayName.trim().lower();
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if false;
+    }
+
     match /rooms/{roomId} {
       allow get: if isSignedIn();
       allow list: if false;

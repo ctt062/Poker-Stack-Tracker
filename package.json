@@ -1,0 +1,11 @@
+{
+  "name": "poker-stack-tracker",
+  "private": true,
+  "description": "Track poker game stacks, buy-ins, and cash-outs",
+  "scripts": {
+    "test": "node tests/room-display-name.mjs && node tests/e2e.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.15.0"
+  }
+}

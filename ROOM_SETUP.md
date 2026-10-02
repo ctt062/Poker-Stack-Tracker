@@ -10,10 +10,16 @@ Home-game traffic is tiny compared to Firebase free quotas. If you previously us
 2. **Add project** (Google Analytics optional)
 3. **Project settings → Your apps → Web (`</>`)** → register app → copy the config object
 
-## 2. Enable Anonymous Auth
+## 2. Enable sign-in methods
 
 1. **Build → Authentication → Get started**
-2. **Sign-in method → Anonymous → Enable → Save**
+2. Enable these sign-in providers:
+   - **Google** → Enable → set a support email → Save
+   - **Apple** → Enable (needs an Apple Developer account, Services ID, and the Firebase return URL). Skip this provider if you are not shipping Apple sign-in yet; the in-app button will show a clear error
+   - **Email/Password** → Enable → Save
+3. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
+
+Do not enable Anonymous Auth; the app does not use it. Sign-in and display name behavior is described in [README.md](README.md).
 
 ## 3. Create Firestore
 
@@ -55,8 +61,8 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## 6. Verify
 
-1. Open the app on device A → **Room → Create room** → note the code
-2. Device B → **Room → Join** with the code
+1. Open the app on device A → sign in (Google, Apple, or email) → claim a unique display name if asked → **Room → Create room** → note the code
+2. Device B → sign in → claim a different unique display name → **Join** with the code
 3. B is **view only**; on A open **People → Allow edit** for B
 4. Edits should appear on the other device within about a second
 
@@ -66,13 +72,13 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 |--------|----------|
 | Solo | `localStorage` only (unchanged) |
 | Room | One Firestore doc per room + live `onSnapshot` |
-| Auth | Anonymous (`auth.uid`) |
+| Auth | Google, Apple, or email (`auth.uid`). Unique display names live in `displayNames/{lowercase}` plus `users/{uid}` |
 | Host | Creator; edit; grant/revoke; end room (ending drops the host back to solo with the final numbers) |
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |
 | Code | 5-char code in `roomCodes/{code}` → `rooms/{id}` |
 | Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
-| SDK | Firebase scripts load on demand, so solo mode still starts offline |
+| SDK | When config is present, Firebase scripts load at startup for the sign-in gate. An empty `firebase-config.js` keeps the app fully local |
 
 ## Optional deep link
 
