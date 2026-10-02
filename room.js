@@ -442,10 +442,6 @@
         }, { displayName: name });
 
         localStorage.setItem('pst_room_id', roomRef.id);
-        localStorage.setItem('pst_display_name', name);
-        if (global.AppAuth && typeof global.AppAuth.setDisplayName === 'function') {
-            global.AppAuth.setDisplayName(name).catch(() => {});
-        }
 
         attachListener(roomRef.id);
         startPresence();
@@ -534,10 +530,6 @@
         });
 
         localStorage.setItem('pst_room_id', roomId);
-        localStorage.setItem('pst_display_name', name);
-        if (global.AppAuth && typeof global.AppAuth.setDisplayName === 'function') {
-            global.AppAuth.setDisplayName(name).catch(() => {});
-        }
 
         attachListener(roomId);
         startPresence();
@@ -857,7 +849,7 @@
             }
             setRoomStateFromDoc(roomId, data, {
                 displayName: me.displayName
-                    || localStorage.getItem('pst_display_name')
+                    || (global.AppAuth && global.AppAuth.getDisplayName && global.AppAuth.getDisplayName())
                     || 'Player'
             });
             attachListener(roomId);

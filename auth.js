@@ -115,20 +115,129 @@
         return String(value == null ? '' : value).trim().slice(0, 32);
     }
 
+    function normalizeNameKey(name) {
+        return sanitizeDisplayName(name).toLowerCase();
+    }
+
+    function storageKeyForUid(uid) {
+        return uid ? DISPLAY_NAME_KEY + '_' + uid : DISPLAY_NAME_KEY;
+    }
+
+    function readLocalName(uid) {
+        if (uid) {
+            return sanitizeDisplayName(global.localStorage.getItem(storageKeyForUid(uid)));
+        }
+        return sanitizeDisplayName(global.localStorage.getItem(DISPLAY_NAME_KEY));
+    }
+
+    function writeLocalName(uid, name) {
+        if (uid) {
+            global.localStorage.setItem(storageKeyForUid(uid), name);
+            return;
+        }
+        global.localStorage.setItem(DISPLAY_NAME_KEY, name);
+    }
+
+    function getDb() {
+        return global.firebase && global.firebase.firestore
+            ? global.firebase.firestore()
+            : null;
+    }
+
     function getDisplayName() {
-        const local = sanitizeDisplayName(global.localStorage.getItem(DISPLAY_NAME_KEY));
-        if (local) return local;
+        const uid = currentUser && !currentUser.isAnonymous ? currentUser.uid : null;
+        return readLocalName(uid);
+    }
+
+    function suggestedDisplayName() {
         if (currentUser && currentUser.displayName) {
             return sanitizeDisplayName(currentUser.displayName);
         }
         return '';
     }
 
-    function seedDisplayName(user) {
-        if (getDisplayName()) return;
-        const fromProfile = user && sanitizeDisplayName(user.displayName);
-        if (fromProfile) {
-            global.localStorage.setItem(DISPLAY_NAME_KEY, fromProfile);
+    function takenNameError(err) {
+        const code = String((err && err.code) || '');
+        const msg = String((err && err.message) || '');
+        if (msg.indexOf('already taken') !== -1) return err;
+        if (code.indexOf('already-exists') !== -1 || code.indexOf('permission') !== -1) {
+            return new Error('That display name is already taken');
+        }
+        return err;
+    }
+
+    async function claimDisplayName(trimmed) {
+        if (!auth || !auth.currentUser) {
+            writeLocalName(null, trimmed);
+            return trimmed;
+        }
+        const uid = auth.currentUser.uid;
+        const key = normalizeNameKey(trimmed);
+        const db = getDb();
+        if (!db) {
+            writeLocalName(uid, trimmed);
+            return trimmed;
+        }
+
+        const newRef = db.collection('displayNames').doc(key);
+        const userRef = db.collection('users').doc(uid);
+
+        try {
+            await db.runTransaction(async (tx) => {
+                const userSnap = await tx.get(userRef);
+                const oldName = userSnap.exists
+                    ? sanitizeDisplayName(userSnap.data().displayName)
+                    : '';
+                const oldKey = oldName ? normalizeNameKey(oldName) : '';
+
+                const newSnap = await tx.get(newRef);
+                if (newSnap.exists && newSnap.data().uid !== uid) {
+                    throw new Error('That display name is already taken');
+                }
+
+                if (oldKey && oldKey !== key) {
+                    const oldRef = db.collection('displayNames').doc(oldKey);
+                    const oldSnap = await tx.get(oldRef);
+                    if (oldSnap.exists && oldSnap.data().uid === uid) {
+                        tx.delete(oldRef);
+                    }
+                }
+
+                const payload = {
+                    uid: uid,
+                    displayName: trimmed,
+                    nameKey: key
+                };
+                tx.set(newRef, payload);
+                tx.set(userRef, payload, { merge: true });
+            });
+        } catch (e) {
+            throw takenNameError(e);
+        }
+
+        writeLocalName(uid, trimmed);
+        try {
+            await auth.currentUser.updateProfile({ displayName: trimmed });
+        } catch (e) {
+            console.warn('updateProfile', e);
+        }
+        return trimmed;
+    }
+
+    async function refreshClaimedName() {
+        if (!auth || !auth.currentUser) return;
+        const uid = auth.currentUser.uid;
+        const db = getDb();
+        if (!db) return;
+        try {
+            const snap = await db.collection('users').doc(uid).get();
+            if (snap.exists) {
+                const name = sanitizeDisplayName(snap.data().displayName);
+                if (name) writeLocalName(uid, name);
+            }
+            emit('user', snapshot());
+        } catch (e) {
+            console.warn('refreshClaimedName', e);
         }
     }
 
@@ -152,8 +261,8 @@
             auth.signOut().catch(() => {});
             currentUser = null;
         }
-        if (currentUser) seedDisplayName(currentUser);
         emit('user', snapshot());
+        if (currentUser) refreshClaimedName();
     }
 
     async function init() {
@@ -173,8 +282,7 @@
             auth = global.firebase.auth();
 
             try {
-                const redirect = await auth.getRedirectResult();
-                if (redirect && redirect.user) seedDisplayName(redirect.user);
+                await auth.getRedirectResult();
             } catch (e) {
                 emit('error', friendlyAuthError(e).message);
             }
@@ -209,7 +317,6 @@
         await init();
         try {
             const cred = await auth.signInWithPopup(provider);
-            seedDisplayName(cred.user);
             applyUser(cred.user);
             return snapshot();
         } catch (e) {
@@ -272,14 +379,7 @@
         const trimmed = sanitizeDisplayName(name);
         if (!trimmed) throw new Error('Enter a display name');
         if (trimmed.length > 32) throw new Error('Display name must be 32 characters or fewer');
-        global.localStorage.setItem(DISPLAY_NAME_KEY, trimmed);
-        if (auth && auth.currentUser) {
-            try {
-                await auth.currentUser.updateProfile({ displayName: trimmed });
-            } catch (e) {
-                console.warn('updateProfile', e);
-            }
-        }
+        await claimDisplayName(trimmed);
         emit('user', snapshot());
         return trimmed;
     }
@@ -305,6 +405,7 @@
         getAuth,
         snapshot,
         getDisplayName,
+        suggestedDisplayName,
         setDisplayName,
         signInGoogle,
         signInApple,

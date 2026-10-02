@@ -650,6 +650,11 @@ function updateUndoBtn() {
     btn.disabled = !can;
 }
 
+function clearUndo() {
+    undoStack = [];
+    updateUndoBtn();
+}
+
 function recordStackUndo(playerId, previousBuyIn) {
     undoStack.push({ playerId, previousBuyIn });
     if (undoStack.length > 40) undoStack.shift();
@@ -1256,6 +1261,7 @@ function restoreSoloSnapshot() {
     loadGameState();
     applyTheme();
     applyFontSize();
+    clearUndo();
     updateDisplay();
     return true;
 }
@@ -1287,6 +1293,7 @@ function applyRemoteGame(remoteGame) {
     Object.assign(gameState, next);
     // Keep theme prefs local; persist shared fields locally for offline view
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+    clearUndo();
     updateDisplay();
 }
 
@@ -1677,9 +1684,10 @@ function preferredDisplayName() {
 
 function openRoomModal() {
     setRoomError('');
-    const nameInput = document.getElementById('roomDisplayName');
-    if (nameInput) {
-        nameInput.value = preferredDisplayName();
+    const nameEl = document.getElementById('roomDisplayName');
+    if (nameEl) {
+        const name = preferredDisplayName();
+        nameEl.textContent = name || 'Set your name in Settings first';
     }
     ensureHouseState();
     fillRakeFields(gameState.rake, document.getElementById('roomRakeGroup'));
@@ -1687,7 +1695,6 @@ function openRoomModal() {
     syncRoomModalPanels(snap);
     const modal = document.getElementById('roomModal');
     if (modal) modal.style.display = 'block';
-    if (nameInput && !nameInput.closest('[hidden]')) nameInput.focus();
 }
 
 window.openRoomModal = openRoomModal;
@@ -1761,8 +1768,8 @@ function updateAccountChip() {
     if (avatar) avatar.textContent = (name.trim().charAt(0) || '?').toUpperCase();
     btn.hidden = false;
     btn.title = snap.signedIn
-        ? `Signed in${snap.providerLabel ? ' with ' + snap.providerLabel : ''}. Edit display name or sign out.`
-        : 'Set your default display name';
+        ? `Signed in${snap.providerLabel ? ' with ' + snap.providerLabel : ''}. Open Settings to change your unique display name.`
+        : 'Settings: display name';
     const signOutBtn = document.getElementById('signOutBtn');
     if (signOutBtn) signOutBtn.hidden = !snap.signedIn;
     const providerLine = document.getElementById('accountProviderLine');
@@ -1840,7 +1847,9 @@ function applyAuthSnapshot(snap) {
         showAuthPanel('name');
         const input = document.getElementById('authDisplayNameInput');
         if (input) {
-            input.value = '';
+            if (!input.value) {
+                input.value = (window.AppAuth && AppAuth.suggestedDisplayName()) || '';
+            }
             input.focus();
         }
         return;
@@ -1960,6 +1969,10 @@ function initAuthUi() {
 
     if (window.AppAuth) {
         AppAuth.on('user', (snap) => {
+            if (snap && snap.configured && !snap.signedIn) {
+                lockAppForAuth();
+                return;
+            }
             if (document.body.classList.contains('auth-pending') || document.documentElement.classList.contains('auth-pending')) {
                 applyAuthSnapshot(snap);
             } else {
@@ -2013,10 +2026,9 @@ function initRoomUI() {
                 setRoomError('Firebase is not configured. See ROOM_SETUP.md.');
                 return;
             }
-            const name = document.getElementById('roomDisplayName')?.value?.trim() || '';
+            const name = preferredDisplayName();
             if (!name) {
-                setRoomError('Enter a display name before creating a room.');
-                document.getElementById('roomDisplayName')?.focus();
+                setRoomError('Set a unique display name in Settings before creating a room.');
                 return;
             }
             createBtn.disabled = true;
@@ -2042,11 +2054,10 @@ function initRoomUI() {
                 setRoomError('Firebase is not configured. See ROOM_SETUP.md.');
                 return;
             }
-            const name = document.getElementById('roomDisplayName')?.value?.trim() || '';
+            const name = preferredDisplayName();
             const code = joinCodeInput?.value || '';
             if (!name) {
-                setRoomError('Enter a display name before joining.');
-                document.getElementById('roomDisplayName')?.focus();
+                setRoomError('Set a unique display name in Settings before joining.');
                 return;
             }
             if (!code.trim()) {
@@ -2060,6 +2071,7 @@ function initRoomUI() {
             pendingSoloStash = true;
             try {
                 await RoomSync.joinRoom(code, name);
+                clearUndo();
                 syncRoomModalPanels(RoomSync.getRoomSnapshot());
                 updateRoomStatusBar(RoomSync.getRoomSnapshot());
             } catch (e) {
@@ -2167,6 +2179,7 @@ function initRoomUI() {
 
         if (!snap) {
             pendingSoloStash = false;
+            clearUndo();
             // After a room ends, keep the final shared numbers as the new solo
             // session. Only restore the pre-join solo backup when leaving an
             // active room mid-session.

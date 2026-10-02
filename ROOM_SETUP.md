@@ -61,8 +61,8 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## 6. Verify
 
-1. Open the app on device A → sign in (Google, Apple, or email) → set a display name if asked → **Room → Create room** → note the code
-2. Device B → sign in → set a display name if asked → **Join** with the code
+1. Open the app on device A → sign in (Google, Apple, or email) → claim a unique display name if asked → **Room → Create room** → note the code
+2. Device B → sign in → claim a different unique display name → **Join** with the code
 3. B is **view only**; on A open **People → Allow edit** for B
 4. Edits should appear on the other device within about a second
 
@@ -72,7 +72,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 |--------|----------|
 | Solo | `localStorage` only (unchanged) |
 | Room | One Firestore doc per room + live `onSnapshot` |
-| Auth | Google, Apple, or email (`auth.uid`). Display name is stored on the account plus `localStorage` |
+| Auth | Google, Apple, or email (`auth.uid`). Unique display names live in `displayNames/{lowercase}` plus `users/{uid}` |
 | Host | Creator; edit; grant/revoke; end room (ending drops the host back to solo with the final numbers) |
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |

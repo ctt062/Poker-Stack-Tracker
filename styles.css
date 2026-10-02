@@ -1700,6 +1700,15 @@ body.compact-mode .house-badge {
     }
 }
 
+.room-display-name-readonly {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    font-weight: 600;
+    min-height: 42px;
+}
+
 .buyin-amount {
     appearance: none;
     background: none;

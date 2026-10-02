@@ -333,9 +333,9 @@
 
             <div id="roomSoloPanel">
                 <div class="form-group">
-                    <label for="roomDisplayName">Your display name <span class="required-mark">*</span></label>
-                    <input type="text" id="roomDisplayName" placeholder="e.g. Alex" maxlength="32" autocomplete="nickname" required>
-                    <p class="room-field-hint">Change this before you enter. It is saved as your default name, and must be unique in the room.</p>
+                    <label>Your display name</label>
+                    <div id="roomDisplayName" class="room-display-name-readonly"></div>
+                    <p class="room-field-hint">Names are unique. Set yours at sign-in or in Settings, not here.</p>
                 </div>
                 <div class="form-group" id="roomRakeGroup">
                     <label>This game</label>
@@ -444,7 +444,7 @@
 
             <div id="authDisplayNamePanel" hidden>
                 <h2>Your display name</h2>
-                <p class="auth-lead">This is how you appear in rooms. You can change it later, including right before you enter a room.</p>
+                <p class="auth-lead">This is how you appear in rooms. It must be unique. You can change it later in Settings.</p>
                 <form id="authDisplayNameForm">
                     <div class="form-group">
                         <label for="authDisplayNameInput">Display name</label>
@@ -462,13 +462,13 @@
     <div id="accountModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h2>Account</h2>
+            <h2>Settings</h2>
             <p id="accountProviderLine" class="room-hint"></p>
             <form id="accountForm">
                 <div class="form-group">
-                    <label for="accountDisplayName">Default display name</label>
+                    <label for="accountDisplayName">Display name</label>
                     <input type="text" id="accountDisplayName" maxlength="32" autocomplete="nickname" required>
-                    <p class="room-field-hint">Used when you create or join a room. You can still change it on the room screen before you enter.</p>
+                    <p class="room-field-hint">Unique across everyone who uses this app. This is the only place to change it after sign-in.</p>
                 </div>
                 <div class="form-buttons">
                     <button type="submit" class="btn btn-primary">Save name</button>

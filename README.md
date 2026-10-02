@@ -8,7 +8,7 @@ A minimalist web application for tracking chip stacks during poker games.
 
 - **Blind Structure**: Set small and big blind amounts, or pick a 0.5/1, 1/2, 1/3, 2/5 preset (sets the default stack too)
 - **Rake**: Mark a session as no-rake or rake (time, pot % with cap, flat fee, or a custom note). Chosen when creating a room and from the session chip in solo
-- **Sign-in**: When Firebase is configured, Google, Apple, or email is required before the tracker. Set a default display name, and change it before you enter a room
+- **Sign-in**: When Firebase is configured, Google, Apple, or email is required before the tracker. Pick a unique display name at sign-in (or later in Settings). Nobody else can use that name until you change it
 - **Player Management**: Add players with their buy-in amounts. Tap a player's total buy-in to type a new amount
 - **Dealer and Host**: Always-on house rows (default $0, never negative) for tips and host pay. Count toward cash balance, not player count
 - **Stack Tracking**: Track total buy-ins with +/- stacks or by typing, plus undo for the last buy-in change
@@ -31,7 +31,7 @@ If `firebase-config.js` is empty, the app stays local with no account. When Fire
 
 1. Follow **[ROOM_SETUP.md](ROOM_SETUP.md)** (Google / Apple / email Auth + Firestore)
 2. Sign in, set your display name
-3. **Room → Create room** (you can edit your display name on that screen before you enter), share the code
+3. **Room → Create room** (your unique display name is shown, not edited there), share the code
 4. Others sign in, **Join** as viewers; the room host uses **People** to allow edit when needed
 
 Product model: a **Room** is one live session (not a persistent Club). A Club layer can be added later on top of rooms.

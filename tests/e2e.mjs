@@ -273,14 +273,14 @@ async function run() {
             await page.waitForSelector('#roomModal', { visible: true });
             const room = await page.evaluate(() => {
                 const modal = document.getElementById('roomModal');
-                const input = document.getElementById('roomDisplayName');
+                const el = document.getElementById('roomDisplayName');
                 const notConfigured = document.getElementById('roomNotConfigured');
                 const solo = document.getElementById('roomSoloPanel');
                 const rakeYes = document.querySelector('#roomRakeGroup input[name="roomRakeEnabled"][value="yes"]');
                 return {
                     display: modal ? modal.style.display : 'missing',
-                    value: input ? input.value : '',
-                    readOnly: input ? input.readOnly : true,
+                    value: el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '',
+                    tag: el ? el.tagName : '',
                     configuredBannerHidden: notConfigured ? notConfigured.hidden : null,
                     soloHidden: solo ? solo.hidden : null,
                     rakeToggle: !!rakeYes
@@ -288,11 +288,9 @@ async function run() {
             });
             ok('room modal opens after sign-in name', room.display === 'block', room.display);
             ok('room create/join shown when Firebase configured', room.configuredBannerHidden === true && room.soloHidden === false, JSON.stringify(room));
-            ok('room modal prefills display name after auth', room.value === 'River', room.value);
+            ok('room modal shows display name after auth', room.value === 'River', room.value);
+            ok('room display name is not editable', room.tag !== 'INPUT', room.tag);
             ok('room rake toggle present on create', room.rakeToggle);
-            await page.$eval('#roomDisplayName', (el) => { el.value = 'RiverJane'; });
-            const edited = await page.$eval('#roomDisplayName', (el) => el.value);
-            ok('display name editable before entering a room', edited === 'RiverJane');
 
             await page.click('#roomRakeGroup input[name="roomRakeEnabled"][value="yes"]');
             await page.waitForFunction(() => {
@@ -500,20 +498,18 @@ async function run() {
             const roomState = await page.evaluate(() => {
                 window.openRoomModal();
                 const modal = document.getElementById('roomModal');
-                const input = document.getElementById('roomDisplayName');
+                const el = document.getElementById('roomDisplayName');
                 const notConfigured = document.getElementById('roomNotConfigured');
                 return {
                     display: modal ? modal.style.display : 'missing',
-                    value: input ? input.value : '',
-                    readOnly: input ? input.readOnly : true,
+                    value: el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '',
+                    tag: el ? el.tagName : '',
                     banner: notConfigured ? { hidden: notConfigured.hidden, text: notConfigured.textContent } : null
                 };
             });
             ok('room modal opens', roomState.display === 'block', roomState.display);
-            ok('room modal prefills display name', roomState.value === 'River', roomState.value);
-            await page.$eval('#roomDisplayName', (el) => { el.value = 'RiverJane'; });
-            const editableBeforeEnter = await page.$eval('#roomDisplayName', (el) => el.value);
-            ok('display name editable before entering a room', editableBeforeEnter === 'RiverJane');
+            ok('room modal shows display name', roomState.value === 'River', roomState.value);
+            ok('room display name is not an input', roomState.tag !== 'INPUT', roomState.tag);
             const peopleHint = await page.$eval('#peopleModal .room-hint', (el) => el.textContent);
             ok('people modal labels Room host as a permission', /Room host is a permission, not the Host payee/i.test(peopleHint), peopleHint);
             await shot(page, 'solo-account-room-name.png');
