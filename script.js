@@ -1919,7 +1919,10 @@ function initAuthUi() {
             e.preventDefault();
             setAuthError('');
             try {
-                await AppAuth.setDisplayName(document.getElementById('authDisplayNameInput')?.value || '');
+                const saved = await AppAuth.setDisplayName(document.getElementById('authDisplayNameInput')?.value || '');
+                if (window.RoomSync && typeof RoomSync.updateMyDisplayName === 'function') {
+                    await RoomSync.updateMyDisplayName(saved);
+                }
                 applyAuthSnapshot(AppAuth.snapshot());
             } catch (err) {
                 setAuthError((err && err.message) || 'Enter a display name');
@@ -1941,10 +1944,14 @@ function initAuthUi() {
             e.preventDefault();
             const value = document.getElementById('accountDisplayName')?.value || '';
             try {
+                let saved = value.trim();
                 if (window.AppAuth) {
-                    await AppAuth.setDisplayName(value);
+                    saved = await AppAuth.setDisplayName(value);
                 } else {
-                    localStorage.setItem('pst_display_name', value.trim());
+                    localStorage.setItem('pst_display_name', saved);
+                }
+                if (window.RoomSync && typeof RoomSync.updateMyDisplayName === 'function') {
+                    await RoomSync.updateMyDisplayName(saved);
                 }
                 updateAccountChip();
                 const modal = document.getElementById('accountModal');

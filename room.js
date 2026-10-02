@@ -317,6 +317,28 @@
         });
     }
 
+    async function updateMyDisplayName(displayName) {
+        if (!isInRoom() || !db || !uid()) return null;
+        if (roomState.status && roomState.status !== 'active') return null;
+        const name = requireDisplayName(displayName);
+        const myUid = uid();
+        const now = serverTs();
+        await db.collection('rooms').doc(roomState.roomId).update({
+            [`participants.${myUid}.displayName`]: name,
+            [`participants.${myUid}.lastSeen`]: now,
+            updatedAt: now
+        });
+        roomState.displayName = name;
+        const mine = Object.assign(
+            {},
+            (roomState.participants && roomState.participants[myUid]) || {},
+            { displayName: name }
+        );
+        roomState.participants = Object.assign({}, roomState.participants, { [myUid]: mine });
+        emit('room', getRoomSnapshot());
+        return getRoomSnapshot();
+    }
+
     function detachListener() {
         if (unsubRoom) {
             unsubRoom();
@@ -903,6 +925,7 @@
         activeParticipants,
         createRoom,
         joinRoom,
+        updateMyDisplayName,
         leaveRoom,
         endRoom,
         setParticipantRole,

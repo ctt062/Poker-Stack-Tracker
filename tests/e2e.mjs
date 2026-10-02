@@ -310,6 +310,52 @@ async function run() {
             ok('room create rake structures', ['time', 'pot', 'flat', 'custom'].every((t) => rakeUi.types.includes(t)), JSON.stringify(rakeUi.types));
             ok('room create pot-percent fields shown', rakeUi.potVisible);
             await shot(page, 'room-create-rake.png');
+
+            await page.evaluate(() => {
+                const modal = document.getElementById('roomModal');
+                if (modal) modal.style.display = 'none';
+                window.__roomRenames = [];
+                AppAuth.setDisplayName = async (name) => {
+                    const trimmed = String(name || '').trim();
+                    if (!trimmed) throw new Error('Enter a display name');
+                    return trimmed;
+                };
+                RoomSync.updateMyDisplayName = async (name) => {
+                    window.__roomRenames.push(name);
+                    return { displayName: name };
+                };
+            });
+            await tap(page, '#accountBtn');
+            await page.waitForSelector('#accountModal', { visible: true });
+            const settingsNameUi = await page.evaluate(() => {
+                const el = document.getElementById('roomDisplayName');
+                return { tag: el ? el.tagName : '', value: el ? el.textContent : '' };
+            });
+            ok('room create/join name stays read-only in settings', settingsNameUi.tag !== 'INPUT', JSON.stringify(settingsNameUi));
+            await page.$eval('#accountDisplayName', (el) => { el.value = 'Robert'; });
+            await tap(page, '#accountForm button[type="submit"]');
+            await page.waitForFunction(() => {
+                const modal = document.getElementById('accountModal');
+                return modal && modal.style.display === 'none';
+            });
+            const settingsRenames = await page.evaluate(() => window.__roomRenames.slice());
+            ok('settings save updates live room display name', settingsRenames.length === 1 && settingsRenames[0] === 'Robert', JSON.stringify(settingsRenames));
+
+            await page.evaluate(() => { window.__roomRenames = []; });
+            await page.evaluate(() => {
+                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+            });
+            await page.waitForFunction(() => {
+                const panel = document.getElementById('authDisplayNamePanel');
+                return panel && !panel.hidden;
+            });
+            await page.$eval('#authDisplayNameInput', (el) => { el.value = 'Charlie'; });
+            await tap(page, '#authDisplayNameForm button[type="submit"]');
+            await page.waitForFunction(() => Array.isArray(window.__roomRenames) && window.__roomRenames.length > 0);
+            const gateRenames = await page.evaluate(() => window.__roomRenames.slice());
+            ok('sign-in name gate updates live room display name', gateRenames.length === 1 && gateRenames[0] === 'Charlie', JSON.stringify(gateRenames));
+            const stillReadonly = await page.$eval('#roomDisplayName', (el) => el.tagName);
+            ok('room create/join name is still not an input', stillReadonly !== 'INPUT', stillReadonly);
         });
 
         await scenario('solo tracker buy-in house rake', async (page) => {
