@@ -8,6 +8,12 @@
     <title>Poker Stack Tracker</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="styles.css">
+    <script src="firebase-config.js"></script>
+    <script>
+        if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey) {
+            document.documentElement.classList.add('auth-pending');
+        }
+    </script>
 </head>
 <body>
     <div class="container">
@@ -35,13 +41,17 @@
                     href="https://github.com/ctt062/Poker-Stack-Tracker"
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="Open this project on GitHub"
+                    title="Star this project on GitHub"
+                    aria-label="Star this project on GitHub"
                 >
                     <svg class="github-icon" viewBox="0 0 24 24" aria-hidden="true">
                         <path fill="currentColor" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
                     </svg>
-                    <span class="github-link-text">Star my repo</span>
                 </a>
+                <button type="button" id="accountBtn" class="account-chip" hidden title="Account and display name">
+                    <span class="account-avatar" id="accountAvatar" aria-hidden="true">?</span>
+                    <span class="account-chip-name" id="accountChipName">Sign in</span>
+                </button>
                 <button id="themeToggle" class="btn btn-theme" title="Toggle Theme">
                     <svg class="theme-icon sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="5"></circle>
@@ -64,18 +74,27 @@
         <div class="controls">
             <div class="control-row">
                 <div class="control-group">
-                    <label>Blind Structure:</label>
+                    <label>Blinds:</label>
                     <span id="blindDisplay" class="blind-display" onclick="openBlindModal()">Click to set</span>
                 </div>
 
                 <div class="control-group">
-                    <label>Stack Amount: $</label>
+                    <label>Rake:</label>
+                    <span id="rakeDisplay" class="blind-display rake-display" onclick="openRakeModal()">No rake</span>
+                </div>
+
+                <div class="control-group">
+                    <label>Stack: $</label>
                     <input type="number" id="stackAmount" value="200" min="1">
                 </div>
             </div>
 
             <div class="control-row">
                 <div class="session-name" id="sessionName" onclick="openEditSessionModal()">Session Name</div>
+                <div class="session-clock" id="sessionClock">
+                    <span id="sessionClockTime" class="session-clock-time">00:00:00</span>
+                    <button type="button" id="sessionClockBtn" class="btn btn-secondary btn-small">Start</button>
+                </div>
                 <div class="banker-name" id="bankerName" onclick="openEditBankerModal()">Banker</div>
             </div>
 
@@ -93,11 +112,12 @@
 
             <div class="control-row">
                 <div class="control-group">
-                    <label>Total Players:</label>
+                    <label>Players:</label>
                     <span id="totalPlayers" class="player-count">0</span>
                 </div>
 
                 <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
+                <button type="button" id="undoBtn" class="btn btn-secondary" disabled title="Undo last buy-in change">Undo</button>
             </div>
         </div>
 
@@ -119,6 +139,14 @@
 
         <div class="balance-section">
             <h3>Total Cash Balance: <span id="totalBalance">$0.00</span></h3>
+            <div class="balance-breakdown" id="balanceBreakdown"></div>
+            <p id="rakeHint" class="rake-hint" hidden></p>
+        </div>
+
+        <div id="settlementSection" class="settlement-section" hidden>
+            <h3>Settlement</h3>
+            <p class="settlement-hint">Who pays whom so the books close. House rows are creditors (they only receive).</p>
+            <ul id="settlementList" class="settlement-list"></ul>
         </div>
 
         <div class="action-buttons">
@@ -138,6 +166,16 @@
             <h2>Set Blind Structure</h2>
             <form id="blindForm">
                 <div class="form-group">
+                    <label>Presets</label>
+                    <div class="preset-row" id="blindPresets">
+                        <button type="button" class="btn btn-secondary btn-small preset-btn" data-small="0.5" data-big="1" data-stack="100">0.5/1 · $100</button>
+                        <button type="button" class="btn btn-secondary btn-small preset-btn" data-small="1" data-big="2" data-stack="200">1/2 · $200</button>
+                        <button type="button" class="btn btn-secondary btn-small preset-btn" data-small="1" data-big="3" data-stack="300">1/3 · $300</button>
+                        <button type="button" class="btn btn-secondary btn-small preset-btn" data-small="2" data-big="5" data-stack="500">2/5 · $500</button>
+                    </div>
+                    <p class="room-field-hint">A preset sets blinds and the default stack amount.</p>
+                </div>
+                <div class="form-group">
                     <label>Small Blind: $</label>
                     <input type="number" id="smallBlind" required min="0.01" step="0.01">
                 </div>
@@ -155,6 +193,10 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Add Player</h2>
+            <div id="seatFromRoomWrap" class="seat-from-room" hidden>
+                <p class="room-field-hint">Seat someone already in this room (uses the current stack amount):</p>
+                <div id="seatFromRoom" class="preset-row"></div>
+            </div>
             <form id="playerForm">
                 <div class="form-group">
                     <label>Player Name:</label>
@@ -202,6 +244,60 @@
         </div>
     </div>
 
+    <!-- Rake Modal -->
+    <div id="rakeModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Rake</h2>
+            <form id="rakeForm">
+                <div class="form-group">
+                    <label>This game</label>
+                    <div class="rake-toggle">
+                        <label class="rake-toggle-option">
+                            <input type="radio" name="rakeEnabled" value="no" checked>
+                            <span>No rake</span>
+                        </label>
+                        <label class="rake-toggle-option">
+                            <input type="radio" name="rakeEnabled" value="yes">
+                            <span>Rake game</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="rakeStructureFields" class="rake-details" hidden>
+                    <div class="form-group">
+                        <label for="rakeType">Structure</label>
+                        <select id="rakeType" class="banker-select">
+                            <option value="time">Time collection ($ / player / hour)</option>
+                            <option value="pot">Pot % with cap</option>
+                            <option value="flat">Flat table fee ($ / player)</option>
+                            <option value="custom">Custom note</option>
+                        </select>
+                    </div>
+                    <div data-rake-fields="time" class="form-group rake-type-fields">
+                        <label for="rakePerHour">$ per player per hour</label>
+                        <input type="number" id="rakePerHour" min="0" step="0.01" value="5">
+                    </div>
+                    <div data-rake-fields="pot" class="form-group rake-type-fields" hidden>
+                        <label for="rakePercent">Percent of pot</label>
+                        <input type="number" id="rakePercent" min="0" max="100" step="0.1" value="5">
+                        <label for="rakeCap">Cap $</label>
+                        <input type="number" id="rakeCap" min="0" step="0.01" value="5">
+                    </div>
+                    <div data-rake-fields="flat" class="form-group rake-type-fields" hidden>
+                        <label for="rakePerPlayer">$ per player for the night</label>
+                        <input type="number" id="rakePerPlayer" min="0" step="0.01" value="10">
+                    </div>
+                    <div data-rake-fields="custom" class="form-group rake-type-fields" hidden>
+                        <label for="rakeNote">House rule</label>
+                        <input type="text" id="rakeNote" maxlength="80" placeholder="e.g. $1 from every pot to the jackpot">
+                    </div>
+                    <p class="room-field-hint">This is the posted rule. Type the real cash on Dealer and Host so the balance can close.</p>
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Edit Banker Modal -->
     <div id="editBankerModal" class="modal">
         <div class="modal-content">
@@ -239,7 +335,48 @@
                 <div class="form-group">
                     <label for="roomDisplayName">Your display name <span class="required-mark">*</span></label>
                     <input type="text" id="roomDisplayName" placeholder="e.g. Alex" maxlength="32" autocomplete="nickname" required>
-                    <p class="room-field-hint">Required. Must be unique in the room (not already used by someone else).</p>
+                    <p class="room-field-hint">Change this before you enter. It is saved as your default name, and must be unique in the room.</p>
+                </div>
+                <div class="form-group" id="roomRakeGroup">
+                    <label>This game</label>
+                    <div class="rake-toggle">
+                        <label class="rake-toggle-option">
+                            <input type="radio" name="roomRakeEnabled" value="no" checked>
+                            <span>No rake</span>
+                        </label>
+                        <label class="rake-toggle-option">
+                            <input type="radio" name="roomRakeEnabled" value="yes">
+                            <span>Rake game</span>
+                        </label>
+                    </div>
+                    <div id="roomRakeDetails" class="rake-details" hidden>
+                        <label for="roomRakeType">Rake structure</label>
+                        <select id="roomRakeType" class="banker-select">
+                            <option value="time">Time collection ($ / player / hour)</option>
+                            <option value="pot">Pot % with cap</option>
+                            <option value="flat">Flat table fee ($ / player)</option>
+                            <option value="custom">Custom note</option>
+                        </select>
+                        <div data-rake-fields="time" class="rake-type-fields">
+                            <label for="roomRakePerHour">$ per player per hour</label>
+                            <input type="number" id="roomRakePerHour" min="0" step="0.01" value="5">
+                        </div>
+                        <div data-rake-fields="pot" class="rake-type-fields" hidden>
+                            <label for="roomRakePercent">Percent of pot</label>
+                            <input type="number" id="roomRakePercent" min="0" max="100" step="0.1" value="5">
+                            <label for="roomRakeCap">Cap $</label>
+                            <input type="number" id="roomRakeCap" min="0" step="0.01" value="5">
+                        </div>
+                        <div data-rake-fields="flat" class="rake-type-fields" hidden>
+                            <label for="roomRakePerPlayer">$ per player</label>
+                            <input type="number" id="roomRakePerPlayer" min="0" step="0.01" value="10">
+                        </div>
+                        <div data-rake-fields="custom" class="rake-type-fields" hidden>
+                            <label for="roomRakeNote">House rule</label>
+                            <input type="text" id="roomRakeNote" maxlength="80" placeholder="e.g. $1 from every pot to the jackpot">
+                        </div>
+                        <p class="room-field-hint">Posted rule only. Actual dollars go on the Dealer and Host rows.</p>
+                    </div>
                 </div>
                 <div class="room-solo-actions">
                     <button type="button" id="createRoomBtn" class="btn btn-primary">Create room</button>
@@ -273,13 +410,75 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>People in room</h2>
-            <p class="room-hint">Viewers see live stacks. Host can grant edit access or kick someone (5 minute rejoin ban).</p>
+            <p class="room-hint">Viewers see live stacks. The room host can grant edit access or kick someone (5 minute rejoin ban). Room host is a permission, not the Host payee on the table.</p>
             <ul id="peopleList" class="people-list"></ul>
         </div>
     </div>
 
-    <!-- Firebase compat SDKs are fetched on demand by room.js, so solo mode stays fully local -->
-    <script src="firebase-config.js"></script>
+    <!-- Auth gate: Google / Apple / email before using the app when Firebase is configured -->
+    <div id="authGate" class="auth-gate">
+        <div class="auth-card">
+            <h1>Poker Stack Tracker</h1>
+            <p id="authGateLead" class="auth-lead">Sign in to track stacks and join rooms.</p>
+
+            <div id="authSignInPanel">
+                <button type="button" id="authGoogleBtn" class="btn btn-auth btn-auth-google">Continue with Google</button>
+                <button type="button" id="authAppleBtn" class="btn btn-auth btn-auth-apple">Continue with Apple</button>
+                <div class="room-divider">or email</div>
+                <form id="authEmailForm">
+                    <div class="form-group">
+                        <label for="authEmail">Email</label>
+                        <input type="email" id="authEmail" autocomplete="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="authPassword">Password</label>
+                        <input type="password" id="authPassword" autocomplete="current-password" minlength="6" required>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="btn btn-primary" id="authEmailSignIn">Sign in</button>
+                        <button type="button" class="btn btn-secondary" id="authEmailCreate">Create account</button>
+                    </div>
+                    <button type="button" class="btn btn-link" id="authForgot">Forgot password</button>
+                </form>
+            </div>
+
+            <div id="authDisplayNamePanel" hidden>
+                <h2>Your display name</h2>
+                <p class="auth-lead">This is how you appear in rooms. You can change it later, including right before you enter a room.</p>
+                <form id="authDisplayNameForm">
+                    <div class="form-group">
+                        <label for="authDisplayNameInput">Display name</label>
+                        <input type="text" id="authDisplayNameInput" maxlength="32" autocomplete="nickname" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-auth">Continue</button>
+                </form>
+            </div>
+
+            <p id="authError" class="room-error" hidden></p>
+        </div>
+    </div>
+
+    <!-- Account / default display name -->
+    <div id="accountModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Account</h2>
+            <p id="accountProviderLine" class="room-hint"></p>
+            <form id="accountForm">
+                <div class="form-group">
+                    <label for="accountDisplayName">Default display name</label>
+                    <input type="text" id="accountDisplayName" maxlength="32" autocomplete="nickname" required>
+                    <p class="room-field-hint">Used when you create or join a room. You can still change it on the room screen before you enter.</p>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="btn btn-primary">Save name</button>
+                    <button type="button" id="signOutBtn" class="btn btn-danger">Sign out</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
     <script src="room.js"></script>
     <script src="script.js"></script>
     <script>

@@ -1,5 +1,6 @@
 /**
- * Room sync layer: multi-device shared session via Firebase Auth (anon) + Firestore.
+ * Room sync layer: multi-device shared session via Firebase Auth + Firestore.
+ * Sign-in is Google / Apple / email (see auth.js). Anonymous auth is not used.
  * If Firebase is not configured, create/join is disabled and the app stays local-only.
  */
 (function (global) {
@@ -92,7 +93,10 @@
             stackAmount: gameState.stackAmount,
             players: gameState.players,
             sessionName: gameState.sessionName,
-            bankerName: gameState.bankerName
+            bankerName: gameState.bankerName,
+            rake: gameState.rake || null,
+            house: gameState.house || null,
+            clock: gameState.clock || null
         }));
     }
 
@@ -173,10 +177,12 @@
     }
 
     /**
-     * The compat SDKs are fetched from the CDN only when a room is actually
-     * used, so solo mode (including offline PWA launches) never waits on them.
+     * Prefer auth.js's SDK loader so sign-in and rooms share one Firebase app.
      */
     function loadFirebaseSdk() {
+        if (global.AppAuth && typeof global.AppAuth.loadSdk === 'function') {
+            return global.AppAuth.loadSdk();
+        }
         if (global.firebase && global.firebase.firestore && global.firebase.auth) {
             return Promise.resolve();
         }
@@ -197,19 +203,23 @@
         if (initialized) return true;
         if (!isConfigured()) return false;
 
-        await loadFirebaseSdk();
-        if (!global.firebase) {
-            throw new Error('Firebase SDK not loaded');
+        if (global.AppAuth && typeof global.AppAuth.ensureAuth === 'function') {
+            await global.AppAuth.ensureAuth();
+        } else {
+            await loadFirebaseSdk();
+            if (!global.firebase) {
+                throw new Error('Firebase SDK not loaded');
+            }
+            if (!global.firebase.apps.length) {
+                global.firebase.initializeApp(global.FIREBASE_CONFIG);
+            }
         }
 
-        if (!global.firebase.apps.length) {
-            global.firebase.initializeApp(global.FIREBASE_CONFIG);
-        }
         auth = global.firebase.auth();
         db = global.firebase.firestore();
 
-        if (!auth.currentUser) {
-            await auth.signInAnonymously();
+        if (!auth.currentUser || auth.currentUser.isAnonymous) {
+            throw new Error('Sign in with Google, Apple, or email first.');
         }
 
         initialized = true;
@@ -433,6 +443,9 @@
 
         localStorage.setItem('pst_room_id', roomRef.id);
         localStorage.setItem('pst_display_name', name);
+        if (global.AppAuth && typeof global.AppAuth.setDisplayName === 'function') {
+            global.AppAuth.setDisplayName(name).catch(() => {});
+        }
 
         attachListener(roomRef.id);
         startPresence();
@@ -522,6 +535,9 @@
 
         localStorage.setItem('pst_room_id', roomId);
         localStorage.setItem('pst_display_name', name);
+        if (global.AppAuth && typeof global.AppAuth.setDisplayName === 'function') {
+            global.AppAuth.setDisplayName(name).catch(() => {});
+        }
 
         attachListener(roomId);
         startPresence();
