@@ -15,6 +15,10 @@
     const KICK_BAN_MS = 5 * 60 * 1000;
     /** Empty rooms are deleted this long after the last person leaves. */
     const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
+    /** Concurrent rooms one account can create. */
+    const MAX_HOSTED_ROOMS = 3;
+    /** Live rooms are deleted this long after creation. */
+    const ROOM_TTL_MS = 7 * 24 * 60 * 60 * 1000;
     const ABANDON_CLEANUP_KEY = 'pst_abandon_cleanup';
     const SDK_VERSION = '10.14.1';
     const SDK_SCRIPTS = [
@@ -167,6 +171,93 @@
         return global.firebase.firestore.FieldValue.serverTimestamp();
     }
 
+    function fieldDelete() {
+        return global.firebase.firestore.FieldValue.delete();
+    }
+
+    function millisFromTs(value) {
+        if (value == null) return 0;
+        if (typeof value === 'number') return value;
+        if (typeof value.toMillis === 'function') return value.toMillis();
+        if (typeof value.seconds === 'number') return value.seconds * 1000;
+        const t = Date.parse(value);
+        return Number.isNaN(t) ? 0 : t;
+    }
+
+    function createdAtMillis(data) {
+        return millisFromTs(data && data.createdAt);
+    }
+
+    function expiresAtMillis(data) {
+        if (!data) return 0;
+        const fromField = millisFromTs(data.expiresAt);
+        if (fromField) return fromField;
+        const created = createdAtMillis(data);
+        return created ? created + ROOM_TTL_MS : 0;
+    }
+
+    function isExpiredRoom(data) {
+        const ms = expiresAtMillis(data);
+        if (!ms) return false;
+        return Date.now() >= ms;
+    }
+
+    function roomExpiryDate() {
+        return new Date(Date.now() + ROOM_TTL_MS);
+    }
+
+    function userRefFor(uidValue) {
+        return db.collection('users').doc(uidValue);
+    }
+
+    async function releaseCreatedRoom(roomId, createdBy) {
+        const owner = createdBy || uid();
+        if (!owner || !roomId || !db) return;
+        try {
+            await userRefFor(owner).update({
+                [`createdRooms.${roomId}`]: fieldDelete()
+            });
+        } catch (e) {
+            console.warn('releaseCreatedRoom', e);
+        }
+    }
+
+    async function purgeExpiredRoom(roomId, data) {
+        if (!roomId || !db) return;
+        try {
+            await db.collection('rooms').doc(roomId).delete();
+            if (data && data.code) await deleteRoomCode(data.code);
+            await releaseCreatedRoom(roomId, data && (data.createdBy || data.hostId));
+        } catch (e) {
+            console.warn('purgeExpiredRoom', e);
+        }
+    }
+
+    async function sweepMyExpiredRooms() {
+        const myUid = uid();
+        if (!myUid || !db) return;
+        try {
+            const userSnap = await userRefFor(myUid).get();
+            if (!userSnap.exists) return;
+            const createdRooms = (userSnap.data() || {}).createdRooms || {};
+            const ids = Object.keys(createdRooms).slice(0, 20);
+            for (let i = 0; i < ids.length; i++) {
+                const id = ids[i];
+                const snap = await db.collection('rooms').doc(id).get();
+                if (!snap.exists) {
+                    await releaseCreatedRoom(id, myUid);
+                    continue;
+                }
+                const d = snap.data();
+                if (isExpiredRoom(d) || d.status === 'abandoned') {
+                    await purgeExpiredRoom(id, d);
+                }
+            }
+        } catch (e) {
+            console.warn('sweepMyExpiredRooms', e);
+        }
+    }
+
     function loadScript(src) {
         return new Promise((resolve, reject) => {
             const el = document.createElement('script');
@@ -229,7 +320,9 @@
 
         initialized = true;
         // Best-effort purge of rooms we abandoned earlier (10 min TTL)
+        // and rooms this account created that have passed the 1-week lifetime.
         runPendingAbandonCleanup().catch(() => {});
+        sweepMyExpiredRooms().catch(() => {});
         return true;
     }
 
@@ -286,6 +379,7 @@
             roomId,
             code: data.code,
             hostId: data.hostId,
+            createdBy: data.createdBy || data.hostId,
             status: data.status || 'active',
             role: me.role || 'viewer',
             displayName: me.displayName
@@ -396,6 +490,17 @@
                     return;
                 }
                 const data = snap.data();
+                if (isExpiredRoom(data)) {
+                    roomState = null;
+                    stopPresence();
+                    detachListener();
+                    resetPushState();
+                    localStorage.removeItem('pst_room_id');
+                    emit('room', null);
+                    emit('error', 'This room expired (rooms last 1 week) and was removed.');
+                    purgeExpiredRoom(roomId, data).catch(() => {});
+                    return;
+                }
                 const me = data.participants && data.participants[uid()];
                 if (!me) {
                     const ban = getActiveBan(data.bans, uid(), null);
@@ -456,8 +561,11 @@
         if (!code) throw new Error('Could not allocate a room code. Please try again.');
 
         const roomRef = db.collection('rooms').doc();
+        const codeRef = db.collection('roomCodes').doc(code);
+        const userRef = userRefFor(myUid);
         const game = sharedGameFromLocal(gameState);
         const now = serverTs();
+        const expiresAt = roomExpiryDate();
 
         const participants = {
             [myUid]: {
@@ -468,25 +576,81 @@
             }
         };
 
-        const batch = db.batch();
-        batch.set(roomRef, {
-            code,
-            hostId: myUid,
-            status: 'active',
-            createdAt: now,
-            updatedAt: now,
-            game,
-            participants
-        });
-        batch.set(db.collection('roomCodes').doc(code), {
-            roomId: roomRef.id,
-            createdAt: now
-        });
-        await batch.commit();
+        try {
+            await db.runTransaction(async (tx) => {
+                const userSnap = await tx.get(userRef);
+                const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+                const createdRooms = Object.assign({}, userData.createdRooms || {});
+                const existingIds = Object.keys(createdRooms).slice(0, 20);
+                const existingSnaps = [];
+                for (let i = 0; i < existingIds.length; i++) {
+                    existingSnaps.push({
+                        id: existingIds[i],
+                        snap: await tx.get(db.collection('rooms').doc(existingIds[i]))
+                    });
+                }
+
+                const liveIds = [];
+                for (let i = 0; i < existingSnaps.length; i++) {
+                    const item = existingSnaps[i];
+                    if (!item.snap.exists) continue;
+                    const d = item.snap.data();
+                    if (isExpiredRoom(d)) {
+                        tx.delete(db.collection('rooms').doc(item.id));
+                        if (d.code) tx.delete(db.collection('roomCodes').doc(d.code));
+                        continue;
+                    }
+                    if (d.status === 'ended' || d.status === 'abandoned') continue;
+                    liveIds.push(item.id);
+                }
+
+                if (liveIds.length >= MAX_HOSTED_ROOMS) {
+                    throw new Error(
+                        `You can have at most ${MAX_HOSTED_ROOMS} rooms at a time. End one, or wait for a room to expire (1 week).`
+                    );
+                }
+
+                const nextCreated = {};
+                liveIds.forEach((id) => { nextCreated[id] = true; });
+                nextCreated[roomRef.id] = true;
+
+                tx.set(roomRef, {
+                    code,
+                    hostId: myUid,
+                    createdBy: myUid,
+                    status: 'active',
+                    createdAt: now,
+                    updatedAt: now,
+                    expiresAt,
+                    game,
+                    participants
+                });
+                tx.set(codeRef, {
+                    roomId: roomRef.id,
+                    createdAt: now,
+                    expiresAt
+                });
+                tx.set(userRef, {
+                    uid: myUid,
+                    createdRooms: nextCreated
+                }, { merge: true });
+            });
+        } catch (err) {
+            const msg = String((err && err.message) || '');
+            if (/at most \d+ rooms/i.test(msg)) throw err;
+            const codeText = String((err && (err.code || err.message)) || '');
+            if (codeText.includes('permission') || codeText.includes('Permission')) {
+                throw new Error(
+                    `You can have at most ${MAX_HOSTED_ROOMS} rooms at a time. End one, or wait for a room to expire (1 week).`
+                );
+            }
+            throw err;
+        }
 
         setRoomStateFromDoc(roomRef.id, {
             code,
             hostId: myUid,
+            createdBy: myUid,
             status: 'active',
             participants,
             game
@@ -519,6 +683,10 @@
         if (!roomSnap.exists) throw new Error('Room no longer exists.');
 
         const data = roomSnap.data();
+        if (isExpiredRoom(data)) {
+            await purgeExpiredRoom(roomId, data);
+            throw new Error('This room has expired. Rooms last 1 week.');
+        }
         if (data.status === 'ended') throw new Error('This room has ended.');
         if (data.status === 'abandoned') {
             throw new Error('This room is closed (everyone left).');
@@ -657,6 +825,7 @@
             }
             await db.collection('rooms').doc(roomId).delete();
             if (data.code) await deleteRoomCode(data.code);
+            await releaseCreatedRoom(roomId, data.createdBy || data.hostId);
             clearAbandonCleanup(roomId);
         } catch (e) {
             console.warn('purgeAbandonedRoom', e);
@@ -710,10 +879,12 @@
             await roomRef.update({
                 status: 'abandoned',
                 emptyAt,
+                expiresAt: new Date(),
                 participants: {},
                 updatedAt: serverTs()
             });
             await deleteRoomCode(data.code || prev.code);
+            await releaseCreatedRoom(prev.roomId, data.createdBy || data.hostId);
             scheduleAbandonCleanup(prev.roomId, emptyAt);
             return;
         }
@@ -726,10 +897,12 @@
                 await roomRef.update({
                     status: 'abandoned',
                     emptyAt,
+                    expiresAt: new Date(),
                     participants: {},
                     updatedAt: serverTs()
                 });
                 await deleteRoomCode(data.code || prev.code);
+                await releaseCreatedRoom(prev.roomId, data.createdBy || data.hostId);
                 scheduleAbandonCleanup(prev.roomId, emptyAt);
                 return;
             }
@@ -770,6 +943,7 @@
         if (!roomState || !isHost()) throw new Error('Only the host can end the room');
         await db.collection('rooms').doc(roomState.roomId).update({
             status: 'ended',
+            expiresAt: new Date(),
             updatedAt: serverTs()
         });
         try {
@@ -777,6 +951,7 @@
         } catch (e) {
             console.warn('endRoom code delete', e);
         }
+        await releaseCreatedRoom(roomState.roomId, roomState.createdBy || roomState.hostId);
         roomState.status = 'ended';
         emit('room', getRoomSnapshot());
     }
@@ -888,6 +1063,11 @@
                 return null;
             }
             const data = snap.data();
+            if (isExpiredRoom(data)) {
+                localStorage.removeItem('pst_room_id');
+                await purgeExpiredRoom(roomId, data);
+                return null;
+            }
             if (data.status === 'abandoned') {
                 localStorage.removeItem('pst_room_id');
                 await purgeAbandonedRoom(roomId, data.emptyAt || 0);
@@ -964,6 +1144,8 @@
         tryRestoreRoom,
         on,
         STALE_MS,
-        KICK_BAN_MS
+        KICK_BAN_MS,
+        MAX_HOSTED_ROOMS,
+        ROOM_TTL_MS
     };
 })(window);

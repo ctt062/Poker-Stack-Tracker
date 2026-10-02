@@ -58,6 +58,30 @@ service cloud.firestore {
         && request.time.toMillis() > resource.data.emptyAt + 600000;
     }
 
+    function roomIsExpired() {
+      return (
+        ('expiresAt' in resource.data
+          && resource.data.expiresAt is timestamp
+          && resource.data.expiresAt <= request.time)
+        || (
+          !('expiresAt' in resource.data)
+          && 'createdAt' in resource.data
+          && resource.data.createdAt is timestamp
+          && request.time > resource.data.createdAt + duration.value(7, 'd')
+        )
+      );
+    }
+
+    function aboutOneWeekFromNow(ts) {
+      return ts is timestamp
+        && ts > request.time + duration.value(6, 'd')
+        && ts < request.time + duration.value(8, 'd');
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
     function roomPath(roomId) {
       return /databases/$(database)/documents/rooms/$(roomId);
     }
@@ -76,6 +100,11 @@ service cloud.firestore {
         !exists(roomPath(resource.data.roomId))
         || get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid
         || get(roomPath(resource.data.roomId)).data.status in ['ended', 'abandoned']
+        || (
+          'expiresAt' in get(roomPath(resource.data.roomId)).data
+          && get(roomPath(resource.data.roomId)).data.expiresAt is timestamp
+          && get(roomPath(resource.data.roomId)).data.expiresAt <= request.time
+        )
       );
     }
 
@@ -127,11 +156,15 @@ service cloud.firestore {
 
       allow create: if isSignedIn()
         && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.participants[request.auth.uid].role == 'host'
-        && request.resource.data.status == 'active';
+        && request.resource.data.status == 'active'
+        && aboutOneWeekFromNow(request.resource.data.expiresAt)
+        && getAfter(userPath()).data.createdRooms[roomId] == true
+        && getAfter(userPath()).data.createdRooms.keys().size() <= 3;
 
-      allow update: if isSignedIn() && (
+      allow update: if isSignedIn() && !roomIsExpired() && (
         // Host: full control (roles, kick, transfer, abandon, game, etc.)
         isHost()
         // Editor: game state only while live
@@ -185,7 +218,8 @@ service cloud.firestore {
       );
 
       // Host can delete anytime; anyone can purge abandoned rooms after 10 minutes
-      allow delete: if isHost() || isAbandonedPastTtl();
+      // or rooms that have passed the 1-week lifetime.
+      allow delete: if isHost() || isAbandonedPastTtl() || roomIsExpired();
     }
   }
 }

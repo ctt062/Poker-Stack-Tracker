@@ -18,7 +18,7 @@ A minimalist web application for tracking chip stacks during poker games.
 - **Settlement**: Who pays whom after cash-out, including Dealer and Host
 - **Session clock**: Start / pause elapsed time (used for time-rake hints)
 - **Data Persistence**: Automatically saves game state to browser localStorage
-- **Rooms (multi-device sync)**: Create a short room code so other phones join the same live session; the room host edits by default and can grant edit access. Seat someone already in the room from Add Player.
+- **Rooms (multi-device sync)**: Create a short room code so other phones join the same live session; the room host edits by default and can grant edit access. Seat someone already in the room from Add Player. One account can host 3 rooms at a time; each room is deleted after 1 week.
 - **Responsive Design**: Works on desktop and mobile devices
 - **Progressive Web App (PWA)**: Installable as a native app on your phone
 - **Offline Support**: Works offline with service worker caching (solo mode)
@@ -31,7 +31,7 @@ If `firebase-config.js` is empty, the app stays local with no account. When Fire
 
 1. Follow **[ROOM_SETUP.md](ROOM_SETUP.md)** (Google / Apple / email Auth + Firestore)
 2. Sign in, set your display name
-3. **Room → Create room** (your unique display name is shown, not edited there), share the code
+3. **Room → Create room** (your unique display name is shown, not edited there), share the code. Limit: 3 rooms per account; rooms last 1 week then delete themselves
 4. Others sign in, **Join** as viewers; the room host uses **People** to allow edit when needed
 
 Product model: a **Room** is one live session (not a persistent Club). A Club layer can be added later on top of rooms.

@@ -209,6 +209,47 @@ async function run() {
             await shot(page, 'auth-forgot-empty-email.png');
         });
 
+        await scenario('google sign-in before SDK does not crash', async (page) => {
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                if (req.url().includes('gstatic.com/firebasejs')) {
+                    req.abort('failed');
+                    return;
+                }
+                req.continue();
+            });
+            await gotoApp(page, origin);
+            await waitAuthGate(page);
+            await page.waitForFunction(() => {
+                const btn = document.getElementById('authGoogleBtn');
+                return btn && !btn.disabled;
+            });
+            await page.evaluate(() => {
+                const el = document.getElementById('authError');
+                if (el) {
+                    el.hidden = true;
+                    el.textContent = '';
+                }
+            });
+            await page.click('#authGoogleBtn');
+            await page.waitForFunction(() => {
+                const el = document.getElementById('authError');
+                return el && !el.hidden && (el.textContent || '').trim().length > 0;
+            });
+            const text = await page.$eval('#authError', (el) => el.textContent || '');
+            ok(
+                'google click without SDK is a friendly error',
+                /could not reach firebase/i.test(text),
+                text
+            );
+            ok(
+                'google click without SDK does not crash on undefined auth',
+                !/undefined \(reading 'auth'\)/i.test(text),
+                text
+            );
+            await shot(page, 'auth-google-before-sdk.png');
+        });
+
         await scenario('auth gate mobile', async (page) => {
             await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true });
             await gotoApp(page, origin);
@@ -249,10 +290,12 @@ async function run() {
 
             // Continue uses AppAuth.snapshot(); without a real Firebase user that
             // snapshot is signedOut and would re-lock. Drive the post-name unlock
-            // the way boot does after a signed-in user with a saved name.
+            // the way boot does after a signed-in user with a claimed name.
             await page.evaluate(() => {
-                localStorage.setItem('pst_display_name', 'River');
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: 'River' });
+                const claimed = { configured: true, signedIn: true, displayName: 'River', email: '', providerLabel: 'Google' };
+                AppAuth.getDisplayName = () => 'River';
+                AppAuth.snapshot = () => claimed;
+                applyAuthSnapshot(claimed);
             });
             await page.waitForFunction(() => {
                 const gate = document.getElementById('authGate');
@@ -291,6 +334,11 @@ async function run() {
             ok('room modal shows display name after auth', room.value === 'River', room.value);
             ok('room display name is not editable', room.tag !== 'INPUT', room.tag);
             ok('room rake toggle present on create', room.rakeToggle);
+            const capHint = await page.evaluate(() => {
+                const hints = Array.from(document.querySelectorAll('#roomSoloPanel .room-field-hint')).map((el) => el.textContent);
+                return hints.join(' ');
+            });
+            ok('room create mentions 3-room cap and 1-week lifetime', /3 rooms/i.test(capHint) && /1 week/i.test(capHint), capHint);
 
             await page.click('#roomRakeGroup input[name="roomRakeEnabled"][value="yes"]');
             await page.waitForFunction(() => {

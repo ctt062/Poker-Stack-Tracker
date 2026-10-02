@@ -77,6 +77,8 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |
 | Code | 5-char code in `roomCodes/{code}` → `rooms/{id}` |
+| Room cap | One account can have **3** created rooms at a time (`users/{uid}.createdRooms`). End a room or wait for expiry to create another. |
+| Room lifetime | Each room stores `expiresAt` (~7 days after create). Join, restore, create, and the live listener delete expired rooms and their codes. Ended or abandoned rooms expire immediately. |
 | Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
 | SDK | When config is present, Firebase scripts load at startup for the sign-in gate. An empty `firebase-config.js` keeps the app fully local |
 
@@ -86,7 +88,9 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## Cost / limits
 
-Firebase **Spark (free)** is enough for casual home games (occasional rooms, a handful of devices). Ending a room marks it `ended` and deletes the short code so new joins fail; the `rooms/{id}` document is kept so participants can still see final numbers until they leave.
+Firebase **Spark (free)** is enough for casual home games (occasional rooms, a handful of devices). Ending a room marks it `ended` and deletes the short code so new joins fail; the `rooms/{id}` document is kept briefly so participants can still see final numbers until they leave.
+
+Expired rooms (`expiresAt`, 1 week after create) are deleted when someone next joins, restores, hosts another room, or stays connected to a live snapshot. Firestore TTL auto-delete needs Blaze billing, which this project does not use; the client plus security rules enforce the same lifetime on Spark.
 
 ## Migrating from Supabase
 
