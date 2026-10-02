@@ -108,6 +108,11 @@
         return name;
     }
 
+    function claimedDisplayName() {
+        if (!global.AppAuth || typeof global.AppAuth.getDisplayName !== 'function') return '';
+        return String(global.AppAuth.getDisplayName() || '').trim();
+    }
+
     /**
      * True if another participant already uses this name (case-insensitive).
      * exceptUid is ignored so a rejoining user can keep their own name.
@@ -267,7 +272,16 @@
     }
 
     function setRoomStateFromDoc(roomId, data, overrides) {
-        const me = (data.participants && data.participants[uid()]) || {};
+        const myUid = uid();
+        const me = (data.participants && data.participants[myUid]) || {};
+        const claimed = claimedDisplayName();
+        let participants = data.participants || {};
+        if (claimed && myUid && participants[myUid]
+            && (participants[myUid].displayName || '').trim() !== claimed) {
+            participants = Object.assign({}, participants, {
+                [myUid]: Object.assign({}, participants[myUid], { displayName: claimed })
+            });
+        }
         roomState = Object.assign({
             roomId,
             code: data.code,
@@ -277,10 +291,11 @@
             displayName: me.displayName
                 || (roomState && roomState.displayName)
                 || 'Player',
-            participantId: uid(),
-            participants: data.participants || {},
+            participantId: myUid,
+            participants,
             game: data.game || null
         }, overrides || {});
+        if (claimed) roomState.displayName = claimed;
         return roomState;
     }
 
@@ -337,6 +352,20 @@
         roomState.participants = Object.assign({}, roomState.participants, { [myUid]: mine });
         emit('room', getRoomSnapshot());
         return getRoomSnapshot();
+    }
+
+    async function applyClaimedDisplayName(participants) {
+        const claimed = claimedDisplayName();
+        const myUid = uid();
+        if (!claimed || !isInRoom() || !myUid) return;
+        const mine = participants && participants[myUid];
+        const current = ((mine && mine.displayName) || '').trim();
+        if (current === claimed) return;
+        try {
+            await updateMyDisplayName(claimed);
+        } catch (e) {
+            console.warn('applyClaimedDisplayName', e);
+        }
     }
 
     function detachListener() {
@@ -465,6 +494,8 @@
 
         localStorage.setItem('pst_room_id', roomRef.id);
 
+        await applyClaimedDisplayName(participants);
+
         attachListener(roomRef.id);
         startPresence();
         emit('room', getRoomSnapshot());
@@ -552,6 +583,8 @@
         });
 
         localStorage.setItem('pst_room_id', roomId);
+
+        await applyClaimedDisplayName(joinedData.participants);
 
         attachListener(roomId);
         startPresence();
@@ -869,11 +902,8 @@
                 localStorage.removeItem('pst_room_id');
                 return null;
             }
-            setRoomStateFromDoc(roomId, data, {
-                displayName: me.displayName
-                    || (global.AppAuth && global.AppAuth.getDisplayName && global.AppAuth.getDisplayName())
-                    || 'Player'
-            });
+            setRoomStateFromDoc(roomId, data);
+            await applyClaimedDisplayName(data.participants);
             attachListener(roomId);
             startPresence();
             emit('room', getRoomSnapshot());

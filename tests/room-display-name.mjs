@@ -26,13 +26,15 @@ function loadRoom(options = {}) {
     const updates = [];
     const uid = options.uid || 'alice';
     const roomId = options.roomId || 'room1';
+    const code = options.code || 'ABCDE';
+    const claimedName = options.displayName || 'Bob';
     const roomDoc = {
-        code: 'ABCDE',
+        code,
         hostId: uid,
         status: options.status || 'active',
         participants: {
             [uid]: {
-                displayName: 'Bob',
+                displayName: options.participantName || 'Bob',
                 role: 'host',
                 lastSeen: Date.now(),
                 joinedAt: Date.now()
@@ -41,6 +43,7 @@ function loadRoom(options = {}) {
         game: { players: [] }
     };
     const rooms = { [roomId]: roomDoc };
+    const roomCodes = { [code]: { roomId } };
 
     function firestore() {
         return {
@@ -49,7 +52,9 @@ function loadRoom(options = {}) {
                     doc(id) {
                         return {
                             async get() {
-                                const data = name === 'rooms' ? rooms[id] : null;
+                                const data = name === 'rooms' ? rooms[id]
+                                    : name === 'roomCodes' ? roomCodes[id]
+                                    : null;
                                 return { exists: !!data, data: () => data };
                             },
                             async update(payload) {
@@ -97,7 +102,7 @@ function loadRoom(options = {}) {
     sandbox.window = sandbox;
     sandbox.AppAuth = {
         async ensureAuth() { return { signedIn: true, uid }; },
-        getDisplayName() { return 'Bob'; }
+        getDisplayName() { return claimedName; }
     };
     vm.createContext(sandbox);
     vm.runInContext(SOURCE, sandbox);
@@ -184,6 +189,76 @@ async function run() {
             'old name is free for another joiner in this room',
             snap.participants[uid].displayName !== 'Bob' && taken === false,
             snap.participants[uid].displayName
+        );
+    }
+
+    {
+        const { RoomSync, updates, uid, roomId } = loadRoom({ displayName: 'Robert' });
+        const snap = await RoomSync.tryRestoreRoom();
+        const write = updates.find((u) => (
+            u.collection === 'rooms'
+            && u.id === roomId
+            && u.payload
+            && u.payload[`participants.${uid}.displayName`] === 'Robert'
+        ));
+        ok(
+            'restore writes claimed name onto stale participant',
+            !!(write && write.payload[`participants.${uid}.lastSeen`] === SERVER_TS
+                && write.payload.updatedAt === SERVER_TS),
+            JSON.stringify(updates)
+        );
+        ok(
+            'restore joined-as uses claimed name',
+            !!(snap && snap.displayName === 'Robert'),
+            snap && snap.displayName
+        );
+        ok(
+            'restore people/seat uses claimed name',
+            !!(snap && snap.participants[uid] && snap.participants[uid].displayName === 'Robert'),
+            JSON.stringify(snap && snap.participants)
+        );
+        const people = RoomSync.activeParticipants(snap.participants);
+        ok(
+            'restore active participants use claimed name',
+            people.some((p) => p.id === uid && p.displayName === 'Robert'),
+            JSON.stringify(people)
+        );
+    }
+
+    {
+        const { RoomSync, updates, uid } = loadRoom({ displayName: 'Bob' });
+        await RoomSync.tryRestoreRoom();
+        const renamed = updates.some((u) => u.payload && u.payload[`participants.${uid}.displayName`]);
+        ok(
+            'restore matching claimed name does not rewrite displayName',
+            renamed === false,
+            JSON.stringify(updates)
+        );
+    }
+
+    {
+        const { RoomSync, updates, uid, roomId } = loadRoom({ displayName: 'Robert' });
+        const snap = await RoomSync.joinRoom('ABCDE', 'Bob');
+        const write = updates.find((u) => (
+            u.collection === 'rooms'
+            && u.id === roomId
+            && u.payload
+            && u.payload[`participants.${uid}.displayName`] === 'Robert'
+        ));
+        ok(
+            'join writes claimed name when it differs from the room doc',
+            !!write,
+            JSON.stringify(updates)
+        );
+        ok(
+            'join joined-as uses claimed name',
+            !!(snap && snap.displayName === 'Robert'),
+            snap && snap.displayName
+        );
+        ok(
+            'join people/seat uses claimed name',
+            !!(snap && snap.participants[uid] && snap.participants[uid].displayName === 'Robert'),
+            JSON.stringify(snap && snap.participants)
         );
     }
 
