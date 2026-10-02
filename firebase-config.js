@@ -1,5 +1,5 @@
 /**
- * Firebase config for Room sync (auto-filled for project poker-stack-tracker).
+ * Firebase config for the sign-in gate and Room sync (auto-filled for project poker-stack-tracker).
  * Web config is public by design; security is Auth + Firestore rules.
  */
 window.FIREBASE_CONFIG = {

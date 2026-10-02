@@ -19,7 +19,7 @@ Home-game traffic is tiny compared to Firebase free quotas. If you previously us
    - **Email/Password** → Enable → Save
 3. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
 
-The app no longer uses Anonymous Auth. Users sign in before tracking, then can edit their display name before they create or join a room.
+Do not enable Anonymous Auth; the app does not use it. Sign-in and display name behavior is described in [README.md](README.md).
 
 ## 3. Create Firestore
 
@@ -61,8 +61,8 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## 6. Verify
 
-1. Open the app on device A → **Room → Create room** → note the code
-2. Device B → **Room → Join** with the code
+1. Open the app on device A → sign in (Google, Apple, or email) → set a display name if asked → **Room → Create room** → note the code
+2. Device B → sign in → set a display name if asked → **Join** with the code
 3. B is **view only**; on A open **People → Allow edit** for B
 4. Edits should appear on the other device within about a second
 
@@ -78,7 +78,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 | Viewer | Live read-only table |
 | Code | 5-char code in `roomCodes/{code}` → `rooms/{id}` |
 | Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
-| SDK | Firebase scripts load at sign-in when config is present. An empty `firebase-config.js` keeps the app fully local |
+| SDK | When config is present, Firebase scripts load at startup for the sign-in gate. An empty `firebase-config.js` keeps the app fully local |
 
 ## Optional deep link
 
