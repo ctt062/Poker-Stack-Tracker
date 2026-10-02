@@ -1,5 +1,14 @@
 {
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Poker Stack Tracker",
+        "supportEmail": "chongtt062@gmail.com"
+      }
+    }
   }
 }

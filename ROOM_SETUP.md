@@ -13,9 +13,9 @@ Home-game traffic is tiny compared to Firebase free quotas. If you previously us
 ## 2. Enable sign-in methods
 
 1. **Build → Authentication → Get started**
-2. Enable these sign-in providers:
+2. Enable these sign-in providers (this project already has Email/Password and Google via `firebase deploy --only auth`):
    - **Google** → Enable → set a support email → Save
-   - **Apple** → Enable (needs an Apple Developer account, Services ID, and the Firebase return URL). Skip this provider if you are not shipping Apple sign-in yet; the in-app button will show a clear error
+   - **Apple** → Enable, then add an Apple Developer Services ID, Team ID, Key ID, and private key (required for web). Without that, the Apple button cannot complete sign-in
    - **Email/Password** → Enable → Save
 3. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
 

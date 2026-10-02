@@ -74,12 +74,18 @@
         return sdkPromise;
     }
 
-    function friendlyAuthError(err) {
+    function friendlyAuthError(err, providerHint) {
         const code = (err && err.code) || '';
+        const raw = String((err && err.message) || '');
+        if (/code flow is not enabled for apple/i.test(raw) || providerHint === 'apple.com' && code === 'auth/operation-not-allowed') {
+            const wrapped = new Error('Apple Sign-In needs an Apple Developer Services ID and key in Firebase Authentication. Use Google or email until that is set up.');
+            wrapped.code = code;
+            return wrapped;
+        }
         const map = {
             'auth/popup-closed-by-user': 'Sign-in was cancelled.',
             'auth/cancelled-popup-request': 'Sign-in was cancelled.',
-            'auth/popup-blocked': 'The sign-in popup was blocked. Allow popups and try again.',
+            'auth/popup-blocked': 'The sign-in popup was blocked. Allow popups, or the app will try a full-page redirect.',
             'auth/operation-not-allowed': 'That sign-in method is not enabled in Firebase Authentication.',
             'auth/unauthorized-domain': 'This domain is not authorized in Firebase Authentication.',
             'auth/invalid-email': 'Enter a valid email address.',
@@ -89,14 +95,24 @@
             'auth/invalid-credential': 'Wrong email or password.',
             'auth/email-already-in-use': 'That email already has an account. Sign in instead.',
             'auth/weak-password': 'Password must be at least 6 characters.',
-            'auth/too-many-requests': 'Too many attempts. Wait a moment and try again.',
+            'auth/too-many-requests': 'Too many attempts. Wait a minute and try again.',
             'auth/network-request-failed': 'Network error. Check your connection.',
             'auth/account-exists-with-different-credential': 'That email is already used with a different sign-in method.'
         };
-        const message = map[code] || (err && err.message) || 'Sign-in failed.';
+        const message = map[code] || raw || 'Sign-in failed.';
         const wrapped = new Error(message);
         wrapped.code = code;
         return wrapped;
+    }
+
+    function shouldUseRedirect() {
+        if (typeof navigator === 'undefined') return false;
+        const ua = navigator.userAgent || '';
+        const iOS = /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+            navigator.standalone === true;
+        return iOS || standalone;
     }
 
     function providerId(user) {
@@ -280,9 +296,13 @@
                 global.firebase.initializeApp(global.FIREBASE_CONFIG);
             }
             auth = global.firebase.auth();
+            if (typeof auth.useDeviceLanguage === 'function') {
+                auth.useDeviceLanguage();
+            }
 
             try {
-                await auth.getRedirectResult();
+                const redirect = await auth.getRedirectResult();
+                if (redirect && redirect.user) applyUser(redirect.user);
             } catch (e) {
                 emit('error', friendlyAuthError(e).message);
             }
@@ -313,33 +333,43 @@
         return snap;
     }
 
-    async function signInWithProvider(provider) {
+    async function signInWithProvider(provider, providerId) {
         await init();
+        const redirectFirst = shouldUseRedirect();
         try {
+            if (redirectFirst) {
+                await auth.signInWithRedirect(provider);
+                return snapshot();
+            }
             const cred = await auth.signInWithPopup(provider);
             applyUser(cred.user);
             return snapshot();
         } catch (e) {
             const code = e && e.code;
-            if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+            const canRedirect = code === 'auth/popup-blocked' ||
+                code === 'auth/operation-not-supported-in-this-environment' ||
+                code === 'auth/cancelled-popup-request';
+            if (!redirectFirst && canRedirect) {
                 await auth.signInWithRedirect(provider);
                 return snapshot();
             }
-            throw friendlyAuthError(e);
+            throw friendlyAuthError(e, providerId);
         }
     }
 
     async function signInGoogle() {
         const provider = new global.firebase.auth.GoogleAuthProvider();
+        provider.addScope('email');
+        provider.addScope('profile');
         provider.setCustomParameters({ prompt: 'select_account' });
-        return signInWithProvider(provider);
+        return signInWithProvider(provider, 'google.com');
     }
 
     async function signInApple() {
         const provider = new global.firebase.auth.OAuthProvider('apple.com');
         provider.addScope('email');
         provider.addScope('name');
-        return signInWithProvider(provider);
+        return signInWithProvider(provider, 'apple.com');
     }
 
     async function signInEmail(email, password) {
