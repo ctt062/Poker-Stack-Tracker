@@ -1259,6 +1259,11 @@ button:disabled {
     margin-bottom: 12px;
 }
 
+.room-solo-actions .room-field-hint {
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+
 .room-divider {
     text-align: center;
     font-size: 12px;

@@ -6,6 +6,8 @@
     'use strict';
 
     const DISPLAY_NAME_KEY = 'pst_display_name';
+    const LOCAL_NAME_EPOCH_KEY = 'pst_display_name_epoch';
+    const LOCAL_NAME_EPOCH = '2';
     const SDK_VERSION = '10.14.1';
     const SDK_SCRIPTS = [
         'firebase-app-compat.js',
@@ -18,6 +20,7 @@
     let currentUser = null;
     let sdkPromise = null;
     let firstAuthPromise = null;
+    let registryName = '';
 
     const listeners = {
         user: [],
@@ -154,6 +157,35 @@
         global.localStorage.setItem(DISPLAY_NAME_KEY, name);
     }
 
+    function clearLocalName(uid) {
+        try {
+            if (uid) global.localStorage.removeItem(storageKeyForUid(uid));
+            global.localStorage.removeItem(DISPLAY_NAME_KEY);
+        } catch (e) { /* ignore */ }
+    }
+
+    function purgeLegacyLocalNames() {
+        try {
+            if (global.localStorage.getItem(LOCAL_NAME_EPOCH_KEY) === LOCAL_NAME_EPOCH) return;
+            const keys = [];
+            for (let i = 0; i < global.localStorage.length; i++) {
+                const k = global.localStorage.key(i);
+                if (k === DISPLAY_NAME_KEY || (k && k.indexOf(DISPLAY_NAME_KEY + '_') === 0)) {
+                    keys.push(k);
+                }
+            }
+            keys.forEach((k) => global.localStorage.removeItem(k));
+            global.localStorage.setItem(LOCAL_NAME_EPOCH_KEY, LOCAL_NAME_EPOCH);
+        } catch (e) { /* ignore */ }
+    }
+
+    function requireAuthSdk() {
+        if (!global.firebase || typeof global.firebase.auth !== 'function') {
+            throw new Error('Could not reach Firebase. Check your connection and try again.');
+        }
+        return global.firebase.auth;
+    }
+
     function getDb() {
         return global.firebase && global.firebase.firestore
             ? global.firebase.firestore()
@@ -161,15 +193,17 @@
     }
 
     function getDisplayName() {
-        const uid = currentUser && !currentUser.isAnonymous ? currentUser.uid : null;
-        return readLocalName(uid);
+        if (currentUser) return registryName;
+        return registryName || readLocalName(null);
     }
 
     function suggestedDisplayName() {
         if (currentUser && currentUser.displayName) {
-            return sanitizeDisplayName(currentUser.displayName);
+            const fromProfile = sanitizeDisplayName(currentUser.displayName);
+            if (fromProfile) return fromProfile;
         }
-        return '';
+        const uid = currentUser && !currentUser.isAnonymous ? currentUser.uid : null;
+        return readLocalName(uid);
     }
 
     function takenNameError(err) {
@@ -184,6 +218,7 @@
 
     async function claimDisplayName(trimmed) {
         if (!auth || !auth.currentUser) {
+            registryName = trimmed;
             writeLocalName(null, trimmed);
             return trimmed;
         }
@@ -231,6 +266,7 @@
             throw takenNameError(e);
         }
 
+        registryName = trimmed;
         writeLocalName(uid, trimmed);
         try {
             await auth.currentUser.updateProfile({ displayName: trimmed });
@@ -241,19 +277,27 @@
     }
 
     async function refreshClaimedName() {
-        if (!auth || !auth.currentUser) return;
+        if (!auth || !auth.currentUser) {
+            registryName = '';
+            return;
+        }
         const uid = auth.currentUser.uid;
         const db = getDb();
-        if (!db) return;
+        if (!db) {
+            registryName = '';
+            return;
+        }
         try {
             const snap = await db.collection('users').doc(uid).get();
-            if (snap.exists) {
-                const name = sanitizeDisplayName(snap.data().displayName);
-                if (name) writeLocalName(uid, name);
-            }
-            emit('user', snapshot());
+            const name = snap.exists
+                ? sanitizeDisplayName(snap.data().displayName)
+                : '';
+            registryName = name;
+            if (name) writeLocalName(uid, name);
+            else clearLocalName(uid);
         } catch (e) {
             console.warn('refreshClaimedName', e);
+            registryName = '';
         }
     }
 
@@ -271,14 +315,18 @@
         };
     }
 
-    function applyUser(user) {
+    async function applyUser(user) {
         currentUser = (user && !user.isAnonymous) ? user : null;
         if (user && user.isAnonymous && auth) {
             auth.signOut().catch(() => {});
             currentUser = null;
         }
+        if (currentUser) {
+            await refreshClaimedName();
+        } else {
+            registryName = '';
+        }
         emit('user', snapshot());
-        if (currentUser) refreshClaimedName();
     }
 
     async function init() {
@@ -290,8 +338,9 @@
         if (firstAuthPromise) return firstAuthPromise;
 
         firstAuthPromise = (async () => {
+            purgeLegacyLocalNames();
             await loadSdk();
-            if (!global.firebase) throw new Error('Firebase SDK not loaded');
+            requireAuthSdk();
             if (!global.firebase.apps.length) {
                 global.firebase.initializeApp(global.FIREBASE_CONFIG);
             }
@@ -302,20 +351,23 @@
 
             try {
                 const redirect = await auth.getRedirectResult();
-                if (redirect && redirect.user) applyUser(redirect.user);
+                if (redirect && redirect.user) await applyUser(redirect.user);
             } catch (e) {
                 emit('error', friendlyAuthError(e).message);
             }
 
             await new Promise((resolve) => {
                 const unsub = auth.onAuthStateChanged((user) => {
-                    applyUser(user);
-                    unsub();
-                    resolve();
+                    applyUser(user).finally(() => {
+                        unsub();
+                        resolve();
+                    });
                 });
             });
 
-            auth.onAuthStateChanged((user) => applyUser(user));
+            auth.onAuthStateChanged((user) => {
+                applyUser(user).catch((e) => console.warn('applyUser', e));
+            });
             initialized = true;
             return snapshot();
         })().catch((e) => {
@@ -358,7 +410,12 @@
     }
 
     async function signInGoogle() {
-        const provider = new global.firebase.auth.GoogleAuthProvider();
+        await init();
+        const AuthNS = requireAuthSdk();
+        if (typeof AuthNS.GoogleAuthProvider !== 'function') {
+            throw new Error('Could not reach Firebase. Check your connection and try again.');
+        }
+        const provider = new AuthNS.GoogleAuthProvider();
         provider.addScope('email');
         provider.addScope('profile');
         provider.setCustomParameters({ prompt: 'select_account' });
@@ -366,7 +423,12 @@
     }
 
     async function signInApple() {
-        const provider = new global.firebase.auth.OAuthProvider('apple.com');
+        await init();
+        const AuthNS = requireAuthSdk();
+        if (typeof AuthNS.OAuthProvider !== 'function') {
+            throw new Error('Could not reach Firebase. Check your connection and try again.');
+        }
+        const provider = new AuthNS.OAuthProvider('apple.com');
         provider.addScope('email');
         provider.addScope('name');
         return signInWithProvider(provider, 'apple.com');
@@ -419,6 +481,7 @@
             try { await auth.signOut(); } catch (e) { console.warn('signOut', e); }
         }
         currentUser = null;
+        registryName = '';
         emit('user', snapshot());
         return snapshot();
     }

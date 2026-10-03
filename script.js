@@ -2000,12 +2000,18 @@ async function bootApp() {
     }
 
     lockAppForAuth();
+    const providerBtns = ['authGoogleBtn', 'authAppleBtn', 'authEmailSignIn', 'authEmailCreate']
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+    providerBtns.forEach((btn) => { btn.disabled = true; });
     try {
         const snap = await AppAuth.init();
         applyAuthSnapshot(snap);
     } catch (e) {
         setAuthError((e && e.message) || 'Could not reach sign-in.');
         showAuthPanel('signin');
+    } finally {
+        providerBtns.forEach((btn) => { btn.disabled = false; });
     }
 }
 
