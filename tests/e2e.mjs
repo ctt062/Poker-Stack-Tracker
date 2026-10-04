@@ -541,6 +541,42 @@ async function run() {
             await page.waitForFunction(() => document.getElementById('sessionClockTime')?.textContent !== '00:00:00', { timeout: 2500 });
             const clock = await page.$eval('#sessionClockTime', (el) => el.textContent);
             ok('session clock starts', clock !== '00:00:00', clock);
+            const resetWhileRunning = await page.$eval('#sessionClockResetBtn', (el) => ({
+                text: el.textContent.trim(),
+                disabled: el.disabled
+            }));
+            ok('reset is available while the clock is running', resetWhileRunning.text === 'Reset' && !resetWhileRunning.disabled, JSON.stringify(resetWhileRunning));
+
+            await tap(page, '#sessionClockBtn');
+            await page.waitForFunction(() => document.getElementById('sessionClockBtn')?.textContent === 'Resume');
+            const paused = await page.evaluate(() => ({
+                btn: document.getElementById('sessionClockBtn')?.textContent,
+                time: document.getElementById('sessionClockTime')?.textContent
+            }));
+            ok('pause turns the button into Resume', paused.btn === 'Resume' && paused.time !== '00:00:00', JSON.stringify(paused));
+            const pausedTime = paused.time;
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            const stillPaused = await page.$eval('#sessionClockTime', (el) => el.textContent);
+            ok('paused clock does not keep ticking', stillPaused === pausedTime, `${pausedTime} -> ${stillPaused}`);
+
+            await tap(page, '#sessionClockBtn');
+            await page.waitForFunction(() => document.getElementById('sessionClockBtn')?.textContent === 'Pause');
+            ok('resume turns the button back into Pause', true);
+
+            await tap(page, '#sessionClockResetBtn');
+            await page.waitForFunction(() => {
+                const time = document.getElementById('sessionClockTime')?.textContent;
+                const btn = document.getElementById('sessionClockBtn')?.textContent;
+                const reset = document.getElementById('sessionClockResetBtn');
+                return time === '00:00:00' && btn === 'Start' && reset && reset.disabled;
+            });
+            const resetState = await page.evaluate(() => ({
+                time: document.getElementById('sessionClockTime')?.textContent,
+                btn: document.getElementById('sessionClockBtn')?.textContent,
+                resetDisabled: document.getElementById('sessionClockResetBtn')?.disabled
+            }));
+            ok('reset returns the clock to 00:00:00 and Start', resetState.time === '00:00:00' && resetState.btn === 'Start' && resetState.resetDisabled, JSON.stringify(resetState));
+            await shot(page, 'session-clock-reset.png');
 
             await tap(page, '#blindDisplay');
             await page.waitForSelector('#blindModal', { visible: true });

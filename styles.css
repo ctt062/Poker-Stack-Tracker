@@ -1455,6 +1455,13 @@ body.room-view-only .session-clock {
     min-width: 0;
 }
 
+.session-clock-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
 .session-clock-time {
     font-variant-numeric: tabular-nums;
     font-weight: 650;
@@ -1695,7 +1702,7 @@ body.compact-mode .house-badge {
 @media (max-width: 768px) {
     .control-row:nth-child(2) .session-clock {
         flex: 1;
-        min-width: 140px;
+        min-width: 180px;
         justify-content: space-between;
     }
 

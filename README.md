@@ -16,7 +16,7 @@ A minimalist web application for tracking chip stacks during poker games.
 - **P&L Calculation**: Automatic profit and loss calculation per player
 - **Balance Overview**: Buy-ins, player cash-outs, house take, and leftover
 - **Settlement**: Who pays whom after cash-out, including Dealer and Host
-- **Session clock**: Start / pause elapsed time (used for time-rake hints)
+- **Session clock**: Start, pause (becomes Resume), and reset elapsed time (used for time-rake hints)
 - **Data Persistence**: Automatically saves game state to browser localStorage
 - **Rooms (multi-device sync)**: Create a short room code so other phones join the same live session; the room host edits by default and can grant edit access. Seat someone already in the room from Add Player. One account can host 3 rooms at a time; each room is deleted after 1 week.
 - **Responsive Design**: Works on desktop and mobile devices

@@ -93,7 +93,10 @@
                 <div class="session-name" id="sessionName" onclick="openEditSessionModal()">Session Name</div>
                 <div class="session-clock" id="sessionClock">
                     <span id="sessionClockTime" class="session-clock-time">00:00:00</span>
-                    <button type="button" id="sessionClockBtn" class="btn btn-secondary btn-small">Start</button>
+                    <div class="session-clock-actions">
+                        <button type="button" id="sessionClockBtn" class="btn btn-secondary btn-small">Start</button>
+                        <button type="button" id="sessionClockResetBtn" class="btn btn-secondary btn-small" disabled>Reset</button>
+                    </div>
                 </div>
                 <div class="banker-name" id="bankerName" onclick="openEditBankerModal()">Banker</div>
             </div>

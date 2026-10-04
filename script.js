@@ -44,6 +44,8 @@ let gameState = {
 let undoStack = [];
 let clockTimer = null;
 let editingHouseId = null;
+let roomUiReady = false;
+let appUnlocked = false;
 
 // DOM Elements
 const addPlayerBtn = document.getElementById('addPlayerBtn');
@@ -313,6 +315,11 @@ if (sessionClockBtn) {
     sessionClockBtn.addEventListener('click', () => toggleClock());
 }
 
+const sessionClockResetBtn = document.getElementById('sessionClockResetBtn');
+if (sessionClockResetBtn) {
+    sessionClockResetBtn.addEventListener('click', () => resetClock());
+}
+
 // Functions
 function money(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
@@ -570,8 +577,7 @@ function updateRakeHint() {
 }
 
 function getElapsedMs() {
-    ensureHouseState();
-    const c = gameState.clock;
+    const c = gameState.clock || defaultClock();
     let ms = c.elapsedMs || 0;
     if (c.running && c.startedAt) {
         ms += Math.max(0, Date.now() - c.startedAt);
@@ -609,11 +615,16 @@ function stopClockTicker() {
 function pauseClock(resetElapsed) {
     ensureHouseState();
     if (gameState.clock.running) {
-        gameState.clock.elapsedMs = getElapsedMs();
+        const ms = getElapsedMs();
+        gameState.clock.elapsedMs = ms;
         gameState.clock.running = false;
         gameState.clock.startedAt = null;
     }
-    if (resetElapsed) gameState.clock.elapsedMs = 0;
+    if (resetElapsed) {
+        gameState.clock.elapsedMs = 0;
+        gameState.clock.running = false;
+        gameState.clock.startedAt = null;
+    }
     stopClockTicker();
 }
 
@@ -621,11 +632,21 @@ function updateClockUI() {
     ensureHouseState();
     const wrap = document.getElementById('sessionClock');
     const btn = document.getElementById('sessionClockBtn');
+    const resetBtn = document.getElementById('sessionClockResetBtn');
     const timeEl = document.getElementById('sessionClockTime');
-    if (timeEl) timeEl.textContent = formatElapsed(getElapsedMs());
-    if (wrap) wrap.classList.toggle('is-running', !!gameState.clock.running);
-    if (btn) btn.textContent = gameState.clock.running ? 'Pause' : (gameState.clock.elapsedMs > 0 ? 'Resume' : 'Start');
-    if (gameState.clock.running) startClockTicker();
+    const elapsed = getElapsedMs();
+    const running = !!gameState.clock.running;
+    if (timeEl) timeEl.textContent = formatElapsed(elapsed);
+    if (wrap) wrap.classList.toggle('is-running', running);
+    if (btn) {
+        btn.textContent = running ? 'Pause' : (elapsed > 0 ? 'Resume' : 'Start');
+        btn.title = running ? 'Pause the session clock' : (elapsed > 0 ? 'Resume the session clock' : 'Start the session clock');
+    }
+    if (resetBtn) {
+        resetBtn.disabled = !canEditGame() || (!running && elapsed === 0);
+        resetBtn.title = 'Reset the session clock to 00:00:00';
+    }
+    if (running) startClockTicker();
     else stopClockTicker();
 }
 
@@ -639,6 +660,13 @@ function toggleClock() {
         gameState.clock.startedAt = Date.now();
         startClockTicker();
     }
+    saveGameState();
+    updateClockUI();
+}
+
+function resetClock() {
+    if (!assertCanEdit()) return;
+    pauseClock(true);
     saveGameState();
     updateClockUI();
 }
@@ -1179,6 +1207,11 @@ function applyEditabilityUI() {
     if (stackAmountInput) stackAmountInput.disabled = !editable;
     const clockBtn = document.getElementById('sessionClockBtn');
     if (clockBtn) clockBtn.disabled = !editable;
+    const clockResetBtn = document.getElementById('sessionClockResetBtn');
+    if (clockResetBtn) {
+        const elapsed = getElapsedMs();
+        clockResetBtn.disabled = !editable || (!gameState.clock.running && elapsed === 0);
+    }
     updateUndoBtn();
     document.body.classList.toggle('room-view-only', !editable && !!(window.RoomSync && RoomSync.isInRoom()));
 }
@@ -1794,8 +1827,6 @@ function showAuthPanel(which) {
     }
 }
 
-let appUnlocked = false;
-
 function lockAppForAuth() {
     appUnlocked = false;
     document.documentElement.classList.add('auth-pending');
@@ -2014,8 +2045,6 @@ async function bootApp() {
         providerBtns.forEach((btn) => { btn.disabled = false; });
     }
 }
-
-let roomUiReady = false;
 
 function initRoomUI() {
     if (roomUiReady) return;
