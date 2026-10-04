@@ -1848,6 +1848,7 @@ function lockAppForAuth() {
     appUnlocked = false;
     document.documentElement.classList.add('auth-pending');
     document.body.classList.add('auth-pending');
+    writeAuthInput('authDisplayNameInput', '');
     const create = document.getElementById('authCreatePanel');
     if (create && !create.hidden) {
         showAuthPanel('create');

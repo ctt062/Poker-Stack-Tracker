@@ -21,6 +21,8 @@
     let sdkPromise = null;
     let firstAuthPromise = null;
     let registryName = '';
+    let nameEpoch = 0;
+    let applyHeld = false;
 
     const listeners = {
         user: [],
@@ -218,6 +220,7 @@
 
     async function claimDisplayName(trimmed) {
         if (!auth || !auth.currentUser) {
+            nameEpoch += 1;
             registryName = trimmed;
             writeLocalName(null, trimmed);
             return trimmed;
@@ -266,6 +269,7 @@
             throw takenNameError(e);
         }
 
+        nameEpoch += 1;
         registryName = trimmed;
         writeLocalName(uid, trimmed);
         try {
@@ -276,28 +280,30 @@
         return trimmed;
     }
 
-    async function refreshClaimedName() {
+    async function refreshClaimedName(epoch) {
         if (!auth || !auth.currentUser) {
-            registryName = '';
+            if (epoch === nameEpoch) registryName = '';
             return;
         }
         const uid = auth.currentUser.uid;
         const db = getDb();
-        if (!db) {
-            registryName = '';
-            return;
-        }
+        if (!db) return;
         try {
             const snap = await db.collection('users').doc(uid).get();
+            if (epoch !== nameEpoch) return;
             const name = snap.exists
                 ? sanitizeDisplayName(snap.data().displayName)
                 : '';
+            if (!name) {
+                if (registryName) return;
+                registryName = '';
+                clearLocalName(uid);
+                return;
+            }
             registryName = name;
-            if (name) writeLocalName(uid, name);
-            else clearLocalName(uid);
+            writeLocalName(uid, name);
         } catch (e) {
             console.warn('refreshClaimedName', e);
-            registryName = '';
         }
     }
 
@@ -316,17 +322,28 @@
     }
 
     async function applyUser(user) {
-        currentUser = (user && !user.isAnonymous) ? user : null;
+        const epoch = ++nameEpoch;
+        const next = (user && !user.isAnonymous) ? user : null;
         if (user && user.isAnonymous && auth) {
             auth.signOut().catch(() => {});
-            currentUser = null;
         }
-        if (currentUser) {
-            await refreshClaimedName();
-        } else {
+        if (next) {
+            if (!currentUser || currentUser.uid !== next.uid) {
+                registryName = '';
+            }
+            currentUser = next;
+            await refreshClaimedName(epoch);
+        } else if (epoch === nameEpoch) {
+            currentUser = null;
             registryName = '';
         }
+        if (epoch !== nameEpoch) return;
         emit('user', snapshot());
+    }
+
+    function applyUserFromObserver(user) {
+        if (applyHeld) return Promise.resolve();
+        return applyUser(user);
     }
 
     async function init() {
@@ -358,7 +375,7 @@
 
             await new Promise((resolve) => {
                 const unsub = auth.onAuthStateChanged((user) => {
-                    applyUser(user).finally(() => {
+                    applyUserFromObserver(user).finally(() => {
                         unsub();
                         resolve();
                     });
@@ -366,7 +383,7 @@
             });
 
             auth.onAuthStateChanged((user) => {
-                applyUser(user).catch((e) => console.warn('applyUser', e));
+                applyUserFromObserver(user).catch((e) => console.warn('applyUser', e));
             });
             initialized = true;
             return snapshot();
@@ -449,6 +466,7 @@
         await init();
         const trimmed = sanitizeDisplayName(displayName);
         if (!trimmed) throw new Error('Enter a display name');
+        applyHeld = true;
         try {
             const cred = await auth.createUserWithEmailAndPassword(String(email || '').trim(), password);
             currentUser = (cred.user && !cred.user.isAnonymous) ? cred.user : null;
@@ -465,6 +483,8 @@
                 throw e;
             }
             throw friendlyAuthError(e);
+        } finally {
+            applyHeld = false;
         }
     }
 
@@ -489,6 +509,7 @@
     }
 
     async function signOut() {
+        nameEpoch += 1;
         if (auth) {
             try { await auth.signOut(); } catch (e) { console.warn('signOut', e); }
         }
