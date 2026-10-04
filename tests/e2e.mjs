@@ -338,6 +338,114 @@ async function run() {
             );
         });
 
+        await scenario('sign-out after create returns to empty sign-in', async (page) => {
+            await gotoApp(page, origin);
+            await waitAuthGate(page);
+            await page.waitForFunction(() => typeof applyAuthSnapshot === 'function' && window.AppAuth);
+            await page.evaluate(async () => {
+                try { await AppAuth.init(); } catch (e) { /* gate still works if SDK is unreachable */ }
+            });
+            await page.click('#authEmailCreate');
+            await page.waitForFunction(() => {
+                const create = document.getElementById('authCreatePanel');
+                return create && !create.hidden;
+            });
+            await page.$eval('#authCreateEmail', (el) => { el.value = 'alice@example.com'; });
+            await page.$eval('#authCreatePassword', (el) => { el.value = 'secret1'; });
+            await page.$eval('#authCreatePasswordConfirm', (el) => { el.value = 'secret1'; });
+            await page.$eval('#authCreateDisplayName', (el) => { el.value = 'Alice'; });
+            await page.$eval('#authDisplayNameInput', (el) => { el.value = 'Alice'; });
+
+            await page.evaluate(() => {
+                applyAuthSnapshot({ configured: true, signedIn: false, displayName: '' });
+            });
+            const inProgress = await page.evaluate(() => ({
+                createHidden: (document.getElementById('authCreatePanel') || {}).hidden,
+                email: (document.getElementById('authCreateEmail') || {}).value || '',
+                password: (document.getElementById('authCreatePassword') || {}).value || '',
+                confirm: (document.getElementById('authCreatePasswordConfirm') || {}).value || '',
+                name: (document.getElementById('authCreateDisplayName') || {}).value || ''
+            }));
+            ok(
+                'signed-out snapshot keeps in-progress create panel',
+                inProgress.createHidden === false
+                    && inProgress.email === 'alice@example.com'
+                    && inProgress.password === 'secret1'
+                    && inProgress.confirm === 'secret1'
+                    && inProgress.name === 'Alice',
+                JSON.stringify(inProgress)
+            );
+
+            await page.evaluate(() => {
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'Alice',
+                    email: 'alice@example.com',
+                    providerLabel: 'Email'
+                });
+            });
+            await page.waitForFunction(() => {
+                const gate = document.getElementById('authGate');
+                return gate && getComputedStyle(gate).display === 'none'
+                    && !document.documentElement.classList.contains('auth-pending');
+            });
+
+            await page.evaluate(() => {
+                applyAuthSnapshot({ configured: true, signedIn: false, displayName: '' });
+            });
+            await page.waitForFunction(() => {
+                const signIn = document.getElementById('authSignInPanel');
+                const create = document.getElementById('authCreatePanel');
+                return signIn && !signIn.hidden && create && create.hidden
+                    && document.documentElement.classList.contains('auth-pending');
+            });
+            const afterUnlockSignOut = await page.evaluate(() => ({
+                signInHidden: (document.getElementById('authSignInPanel') || {}).hidden,
+                createHidden: (document.getElementById('authCreatePanel') || {}).hidden,
+                nameHidden: (document.getElementById('authDisplayNamePanel') || {}).hidden,
+                pending: document.documentElement.classList.contains('auth-pending'),
+                nameInput: (document.getElementById('authDisplayNameInput') || {}).value || '',
+                createEmail: (document.getElementById('authCreateEmail') || {}).value || '',
+                createPassword: (document.getElementById('authCreatePassword') || {}).value || '',
+                createConfirm: (document.getElementById('authCreatePasswordConfirm') || {}).value || '',
+                createName: (document.getElementById('authCreateDisplayName') || {}).value || ''
+            }));
+            ok(
+                'sign-out after create shows sign-in',
+                afterUnlockSignOut.signInHidden === false
+                    && afterUnlockSignOut.createHidden === true
+                    && afterUnlockSignOut.nameHidden === true
+                    && afterUnlockSignOut.pending,
+                JSON.stringify(afterUnlockSignOut)
+            );
+            ok(
+                'sign-out after create clears create fields',
+                afterUnlockSignOut.nameInput === ''
+                    && afterUnlockSignOut.createEmail === ''
+                    && afterUnlockSignOut.createPassword === ''
+                    && afterUnlockSignOut.createConfirm === ''
+                    && afterUnlockSignOut.createName === '',
+                JSON.stringify(afterUnlockSignOut)
+            );
+
+            await page.click('#authEmailCreate');
+            await page.waitForFunction(() => {
+                const create = document.getElementById('authCreatePanel');
+                return create && !create.hidden;
+            });
+            const reused = await page.evaluate(() => ({
+                password: (document.getElementById('authCreatePassword') || {}).value || '',
+                confirm: (document.getElementById('authCreatePasswordConfirm') || {}).value || '',
+                name: (document.getElementById('authCreateDisplayName') || {}).value || ''
+            }));
+            ok(
+                'create after sign-out does not reuse leftover credentials',
+                reused.password === '' && reused.confirm === '' && reused.name === '',
+                JSON.stringify(reused)
+            );
+        });
+
         await scenario('display name gate and room rake', async (page) => {
             await gotoApp(page, origin);
             await waitAuthGate(page);
@@ -380,6 +488,11 @@ async function run() {
             await page.evaluate(() => {
                 AppAuth.signOut = async () => ({ configured: true, signedIn: false, displayName: '' });
             });
+            await page.$eval('#authDisplayNameInput', (el) => { el.value = 'Alice'; });
+            await page.$eval('#authCreateEmail', (el) => { el.value = 'alice@example.com'; });
+            await page.$eval('#authCreatePassword', (el) => { el.value = 'secret1'; });
+            await page.$eval('#authCreatePasswordConfirm', (el) => { el.value = 'secret1'; });
+            await page.$eval('#authCreateDisplayName', (el) => { el.value = 'Alice'; });
             await page.click('#authNameSignOut');
             await page.waitForFunction(() => {
                 const signIn = document.getElementById('authSignInPanel');
@@ -389,9 +502,24 @@ async function run() {
             const afterNameSignOut = await page.evaluate(() => ({
                 signInHidden: (document.getElementById('authSignInPanel') || {}).hidden,
                 nameHidden: (document.getElementById('authDisplayNamePanel') || {}).hidden,
-                pending: document.documentElement.classList.contains('auth-pending')
+                createHidden: (document.getElementById('authCreatePanel') || {}).hidden,
+                pending: document.documentElement.classList.contains('auth-pending'),
+                nameInput: (document.getElementById('authDisplayNameInput') || {}).value || '',
+                createEmail: (document.getElementById('authCreateEmail') || {}).value || '',
+                createPassword: (document.getElementById('authCreatePassword') || {}).value || '',
+                createConfirm: (document.getElementById('authCreatePasswordConfirm') || {}).value || '',
+                createName: (document.getElementById('authCreateDisplayName') || {}).value || ''
             }));
-            ok('name-gate sign-out returns to sign-in', afterNameSignOut.signInHidden === false && afterNameSignOut.nameHidden === true && afterNameSignOut.pending, JSON.stringify(afterNameSignOut));
+            ok('name-gate sign-out returns to sign-in', afterNameSignOut.signInHidden === false && afterNameSignOut.nameHidden === true && afterNameSignOut.createHidden === true && afterNameSignOut.pending, JSON.stringify(afterNameSignOut));
+            ok(
+                'name-gate sign-out clears name and create fields',
+                afterNameSignOut.nameInput === ''
+                    && afterNameSignOut.createEmail === ''
+                    && afterNameSignOut.createPassword === ''
+                    && afterNameSignOut.createConfirm === ''
+                    && afterNameSignOut.createName === '',
+                JSON.stringify(afterNameSignOut)
+            );
             await page.evaluate(() => {
                 applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
             });

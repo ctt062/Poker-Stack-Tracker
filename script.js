@@ -1845,15 +1845,20 @@ function showAuthPanel(which) {
 }
 
 function lockAppForAuth() {
+    const create = document.getElementById('authCreatePanel');
+    const preserveCreate = !!(create && !create.hidden && !appUnlocked);
     appUnlocked = false;
     document.documentElement.classList.add('auth-pending');
     document.body.classList.add('auth-pending');
     writeAuthInput('authDisplayNameInput', '');
-    const create = document.getElementById('authCreatePanel');
-    if (create && !create.hidden) {
+    if (preserveCreate) {
         showAuthPanel('create');
         return;
     }
+    writeAuthInput('authCreateEmail', '');
+    writeAuthInput('authCreatePassword', '');
+    writeAuthInput('authCreatePasswordConfirm', '');
+    writeAuthInput('authCreateDisplayName', '');
     showAuthPanel('signin');
 }
 
