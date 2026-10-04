@@ -1816,21 +1816,49 @@ function updateAccountChip() {
     }
 }
 
+function readAuthInput(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+}
+
+function writeAuthInput(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+}
+
 function showAuthPanel(which) {
     const signIn = document.getElementById('authSignInPanel');
+    const create = document.getElementById('authCreatePanel');
     const namePanel = document.getElementById('authDisplayNamePanel');
     if (signIn) signIn.hidden = which !== 'signin';
+    if (create) create.hidden = which !== 'create';
     if (namePanel) namePanel.hidden = which !== 'name';
     const lead = document.getElementById('authGateLead');
     if (lead) {
         lead.hidden = which !== 'signin';
     }
+    const err = document.getElementById('authError');
+    const panel = which === 'create' ? create : which === 'name' ? namePanel : signIn;
+    const sw = panel && panel.querySelector('.auth-switch');
+    if (err && sw) sw.parentNode.insertBefore(err, sw);
+    else if (err && panel) panel.appendChild(err);
 }
 
 function lockAppForAuth() {
+    const create = document.getElementById('authCreatePanel');
+    const preserveCreate = !!(create && !create.hidden && !appUnlocked);
     appUnlocked = false;
     document.documentElement.classList.add('auth-pending');
     document.body.classList.add('auth-pending');
+    writeAuthInput('authDisplayNameInput', '');
+    if (preserveCreate) {
+        showAuthPanel('create');
+        return;
+    }
+    writeAuthInput('authCreateEmail', '');
+    writeAuthInput('authCreatePassword', '');
+    writeAuthInput('authCreatePasswordConfirm', '');
+    writeAuthInput('authCreateDisplayName', '');
     showAuthPanel('signin');
 }
 
@@ -1905,9 +1933,12 @@ function initAuthUi() {
     const googleBtn = document.getElementById('authGoogleBtn');
     const appleBtn = document.getElementById('authAppleBtn');
     const emailForm = document.getElementById('authEmailForm');
-    const createBtn = document.getElementById('authEmailCreate');
+    const createLink = document.getElementById('authEmailCreate');
+    const createForm = document.getElementById('authCreateForm');
+    const showSignIn = document.getElementById('authShowSignIn');
     const forgotBtn = document.getElementById('authForgot');
     const nameForm = document.getElementById('authDisplayNameForm');
+    const nameSignOut = document.getElementById('authNameSignOut');
     const accountBtn = document.getElementById('accountBtn');
     const accountForm = document.getElementById('accountForm');
     const signOutBtn = document.getElementById('signOutBtn');
@@ -1921,23 +1952,54 @@ function initAuthUi() {
     if (emailForm) {
         emailForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const email = document.getElementById('authEmail')?.value || '';
-            const password = document.getElementById('authPassword')?.value || '';
+            const email = readAuthInput('authEmail');
+            const password = readAuthInput('authPassword');
             handleAuthAction(() => AppAuth.signInEmail(email, password), document.getElementById('authEmailSignIn'));
         });
     }
-    if (createBtn) {
-        createBtn.addEventListener('click', () => {
-            const email = document.getElementById('authEmail')?.value || '';
-            const password = document.getElementById('authPassword')?.value || '';
-            handleAuthAction(() => AppAuth.createEmailAccount(email, password), createBtn);
+    if (createLink) {
+        createLink.addEventListener('click', () => {
+            setAuthError('');
+            writeAuthInput('authCreateEmail', readAuthInput('authEmail'));
+            if (!readAuthInput('authCreatePassword')) {
+                writeAuthInput('authCreatePassword', readAuthInput('authPassword'));
+            }
+            showAuthPanel('create');
+            const focusEl = document.getElementById('authCreateEmail');
+            if (focusEl) focusEl.focus();
+        });
+    }
+    if (showSignIn) {
+        showSignIn.addEventListener('click', () => {
+            setAuthError('');
+            writeAuthInput('authEmail', readAuthInput('authCreateEmail'));
+            showAuthPanel('signin');
+            const focusEl = document.getElementById('authEmail');
+            if (focusEl) focusEl.focus();
+        });
+    }
+    if (createForm) {
+        createForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = readAuthInput('authCreateEmail');
+            const password = readAuthInput('authCreatePassword');
+            const confirm = readAuthInput('authCreatePasswordConfirm');
+            const displayName = readAuthInput('authCreateDisplayName');
+            if (password !== confirm) {
+                setAuthError('Passwords do not match.');
+                return;
+            }
+            handleAuthAction(
+                () => AppAuth.createEmailAccount(email, password, displayName),
+                document.getElementById('authCreateSubmit')
+            );
         });
     }
     if (forgotBtn) {
         forgotBtn.addEventListener('click', async () => {
             setAuthError('');
             try {
-                const email = document.getElementById('authEmail')?.value || '';
+                const email = readAuthInput('authEmail');
                 await AppAuth.sendPasswordReset(email);
                 setAuthError('Password reset email sent.');
             } catch (e) {
@@ -1958,6 +2020,13 @@ function initAuthUi() {
             } catch (err) {
                 setAuthError((err && err.message) || 'Enter a display name');
             }
+        });
+    }
+    if (nameSignOut) {
+        nameSignOut.addEventListener('click', async () => {
+            setAuthError('');
+            if (window.AppAuth) await AppAuth.signOut();
+            applyAuthSnapshot(window.AppAuth ? AppAuth.snapshot() : { configured: false });
         });
     }
     if (accountBtn) {
@@ -2031,7 +2100,7 @@ async function bootApp() {
     }
 
     lockAppForAuth();
-    const providerBtns = ['authGoogleBtn', 'authAppleBtn', 'authEmailSignIn', 'authEmailCreate']
+    const providerBtns = ['authGoogleBtn', 'authAppleBtn', 'authEmailSignIn', 'authCreateSubmit']
         .map((id) => document.getElementById(id))
         .filter(Boolean);
     providerBtns.forEach((btn) => { btn.disabled = true; });

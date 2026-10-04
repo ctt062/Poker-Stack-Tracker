@@ -25,8 +25,40 @@ function memStorage(seed = {}) {
 
 function loadAuth(options = {}) {
     const user = options.user || null;
-    const users = options.users || {};
+    let currentUser = user;
+    const users = { ...(options.users || {}) };
+    const displayNames = { ...(options.displayNames || {}) };
     const storage = memStorage(options.localStorage || {});
+    const authListeners = [];
+
+    function notifyAuth(nextUser) {
+        authListeners.slice().forEach((cb) => cb(nextUser));
+    }
+
+    function storeGet(col, id) {
+        const data = col === 'users' ? users[id] : displayNames[id];
+        return { exists: !!data, data: () => data };
+    }
+
+    function makeRef(col, id) {
+        return {
+            col,
+            id,
+            async get() {
+                if (col === 'users' && options.refreshUserError) {
+                    throw options.refreshUserError;
+                }
+                if (col === 'users' && options.refreshUserEmpty) {
+                    return { exists: false, data: () => undefined };
+                }
+                if (col === 'users' && typeof options.refreshUserGet === 'function') {
+                    return options.refreshUserGet({ id, users });
+                }
+                return storeGet(col, id);
+            }
+        };
+    }
+
     const sandbox = {
         console,
         localStorage: storage,
@@ -42,14 +74,48 @@ function loadAuth(options = {}) {
                     }
                     const authFn = function auth() {
                         return {
-                            currentUser: user,
+                            get currentUser() { return currentUser; },
                             useDeviceLanguage() {},
                             async getRedirectResult() { return { user: null }; },
                             onAuthStateChanged(cb) {
-                                cb(user);
-                                return () => {};
+                                authListeners.push(cb);
+                                cb(currentUser);
+                                return () => {
+                                    const i = authListeners.indexOf(cb);
+                                    if (i >= 0) authListeners.splice(i, 1);
+                                };
                             },
-                            async signOut() {}
+                            async signOut() {
+                                currentUser = null;
+                                notifyAuth(null);
+                            },
+                            async signInWithEmailAndPassword(email, password) {
+                                if (!user) {
+                                    const err = new Error('No account');
+                                    err.code = 'auth/user-not-found';
+                                    throw err;
+                                }
+                                currentUser = user;
+                                notifyAuth(user);
+                                return { user };
+                            },
+                            async createUserWithEmailAndPassword(email, password) {
+                                const created = {
+                                    uid: options.newUid || 'new-user',
+                                    email,
+                                    isAnonymous: false,
+                                    displayName: '',
+                                    providerData: [{ providerId: 'password' }],
+                                    async updateProfile(profile) {
+                                        if (profile && profile.displayName != null) {
+                                            created.displayName = profile.displayName;
+                                        }
+                                    }
+                                };
+                                currentUser = created;
+                                notifyAuth(created);
+                                return { user: created };
+                            }
                         };
                     };
                     authFn.GoogleAuthProvider = function GoogleAuthProvider() {
@@ -67,15 +133,26 @@ function loadAuth(options = {}) {
                             return {
                                 collection(name) {
                                     return {
-                                        doc(id) {
-                                            return {
-                                                async get() {
-                                                    const data = name === 'users' ? users[id] : null;
-                                                    return { exists: !!data, data: () => data };
-                                                }
-                                            };
+                                        doc(id) { return makeRef(name, id); }
+                                    };
+                                },
+                                async runTransaction(fn) {
+                                    const tx = {
+                                        async get(ref) { return storeGet(ref.col, ref.id); },
+                                        set(ref, data, opts) {
+                                            const store = ref.col === 'users' ? users : displayNames;
+                                            if (opts && opts.merge && store[ref.id]) {
+                                                store[ref.id] = Object.assign({}, store[ref.id], data);
+                                            } else {
+                                                store[ref.id] = data;
+                                            }
+                                        },
+                                        delete(ref) {
+                                            const store = ref.col === 'users' ? users : displayNames;
+                                            delete store[ref.id];
                                         }
                                     };
+                                    return fn(tx);
                                 }
                             };
                         }
@@ -90,7 +167,7 @@ function loadAuth(options = {}) {
     sandbox.window = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(SOURCE, sandbox);
-    return { AppAuth: sandbox.AppAuth, storage };
+    return { AppAuth: sandbox.AppAuth, storage, users, displayNames };
 }
 
 const failures = [];
@@ -199,6 +276,175 @@ async function run() {
             'local name save is readable without a Firebase user',
             AppAuth.getDisplayName() === 'River',
             AppAuth.getDisplayName()
+        );
+    }
+
+    {
+        const user = {
+            uid: 'bob',
+            isAnonymous: false,
+            email: 'bob@example.com',
+            displayName: 'Ignored',
+            providerData: [{ providerId: 'password' }]
+        };
+        const { AppAuth } = loadAuth({
+            user,
+            users: { bob: { uid: 'bob', displayName: 'River', nameKey: 'river' } }
+        });
+        await AppAuth.init();
+        const snap = await AppAuth.signInEmail('bob@example.com', 'secret');
+        ok(
+            'sign-in snapshot waits for the claimed Firestore name',
+            snap.signedIn === true && snap.displayName === 'River',
+            JSON.stringify(snap)
+        );
+    }
+
+    {
+        let created = false;
+        const { AppAuth } = loadAuth({ user: null });
+        await AppAuth.init();
+        let err = null;
+        try {
+            await AppAuth.createEmailAccount('new@example.com', 'secret1', '  ');
+            created = true;
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'create account without a display name is rejected',
+            !created && /display name/i.test(String((err && err.message) || '')),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const { AppAuth, users, displayNames } = loadAuth({ user: null, newUid: 'new-user' });
+        await AppAuth.init();
+        const snap = await AppAuth.createEmailAccount('new@example.com', 'secret1', 'River');
+        ok(
+            'create account claims the display name in the same step',
+            snap.signedIn === true && snap.displayName === 'River' && snap.email === 'new@example.com',
+            JSON.stringify(snap)
+        );
+        ok(
+            'create account writes the unique name registry',
+            displayNames.river && displayNames.river.uid === 'new-user'
+                && users['new-user'] && users['new-user'].displayName === 'River',
+            JSON.stringify({ users, displayNames })
+        );
+    }
+
+    {
+        const { AppAuth } = loadAuth({
+            user: null,
+            newUid: 'taken-user',
+            displayNames: { river: { uid: 'someone-else', displayName: 'River' } }
+        });
+        await AppAuth.init();
+        let err = null;
+        let snap = null;
+        try {
+            snap = await AppAuth.createEmailAccount('new@example.com', 'secret1', 'River');
+        } catch (e) {
+            err = e;
+            snap = AppAuth.snapshot();
+        }
+        ok(
+            'create account with a taken name still signs the user in',
+            snap && snap.signedIn === true && snap.displayName === '',
+            JSON.stringify(snap)
+        );
+        ok(
+            'create account with a taken name reports the clash',
+            err && /already taken/i.test(String(err.message || '')),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const { AppAuth, users, displayNames } = loadAuth({
+            user: null,
+            newUid: 'race-user',
+            refreshUserEmpty: true
+        });
+        await AppAuth.init();
+        const signedInNames = [];
+        AppAuth.on('user', (snap) => {
+            if (snap && snap.signedIn) signedInNames.push(snap.displayName);
+        });
+        const snap = await AppAuth.createEmailAccount('race@example.com', 'secret1', 'River');
+        ok(
+            'create keeps claimed name when auth listener refresh is empty',
+            snap.signedIn === true && snap.displayName === 'River' && AppAuth.getDisplayName() === 'River',
+            JSON.stringify({ snap, signedInNames, users, displayNames })
+        );
+        ok(
+            'empty auth-listener refresh does not emit a blank name over the claim',
+            signedInNames.length > 0 && signedInNames.every((name) => name === 'River'),
+            JSON.stringify(signedInNames)
+        );
+        ok(
+            'empty refresh after create does not drop the unique name registry',
+            displayNames.river && displayNames.river.uid === 'race-user'
+                && users['race-user'] && users['race-user'].displayName === 'River',
+            JSON.stringify({ users, displayNames })
+        );
+    }
+
+    {
+        let finishRefresh;
+        const held = new Promise((resolve) => { finishRefresh = resolve; });
+        let refreshStarts = 0;
+        const { AppAuth } = loadAuth({
+            user: null,
+            newUid: 'late-user',
+            refreshUserGet: async () => {
+                refreshStarts += 1;
+                await held;
+                return { exists: false, data: () => undefined };
+            }
+        });
+        await AppAuth.init();
+        const pending = AppAuth.createEmailAccount('late@example.com', 'secret1', 'River');
+        const started = await new Promise((resolve) => {
+            const tick = () => {
+                if (refreshStarts > 0) resolve(true);
+                else setTimeout(tick, 0);
+            };
+            tick();
+        });
+        finishRefresh();
+        const snap = await pending;
+        ok('create waits for the in-flight name refresh', started === true, String(refreshStarts));
+        ok(
+            'late empty refresh cannot clobber a newer claimed name',
+            snap.signedIn === true && snap.displayName === 'River' && AppAuth.getDisplayName() === 'River',
+            JSON.stringify(snap)
+        );
+    }
+
+    {
+        const { AppAuth } = loadAuth({
+            user: null,
+            newUid: 'offline-user',
+            refreshUserError: new Error('offline')
+        });
+        await AppAuth.init();
+        const signedInNames = [];
+        AppAuth.on('user', (snap) => {
+            if (snap && snap.signedIn) signedInNames.push(snap.displayName);
+        });
+        const snap = await AppAuth.createEmailAccount('offline@example.com', 'secret1', 'River');
+        ok(
+            'failed name refresh after claim does not wipe the claimed name',
+            snap.signedIn === true && snap.displayName === 'River' && AppAuth.getDisplayName() === 'River',
+            JSON.stringify({ snap, signedInNames })
+        );
+        ok(
+            'failed name refresh does not emit a blank name over the claim',
+            signedInNames.length > 0 && signedInNames.every((name) => name === 'River'),
+            JSON.stringify(signedInNames)
         );
     }
 

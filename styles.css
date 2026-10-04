@@ -1812,6 +1812,27 @@ body.compact-mode .account-avatar {
     text-decoration: underline;
 }
 
+.auth-switch {
+    text-align: center;
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: var(--text-primary);
+    opacity: 0.85;
+}
+
+.auth-switch .btn-link {
+    padding: 0;
+    font-size: inherit;
+    vertical-align: baseline;
+}
+
+#authForgot {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 2px;
+}
+
 .auth-gate {
     position: fixed;
     inset: 0;
@@ -1820,6 +1841,7 @@ body.compact-mode .account-avatar {
     align-items: center;
     justify-content: center;
     padding: 20px;
+    overflow-y: auto;
     background: var(--modal-overlay);
     backdrop-filter: blur(8px);
 }
