@@ -176,7 +176,6 @@ async function run() {
             await waitAuthGate(page);
             const gate = await page.evaluate(() => {
                 const style = getComputedStyle(document.getElementById('authGate'));
-                const err = document.getElementById('authError');
                 return {
                     pending: document.documentElement.classList.contains('auth-pending'),
                     display: style.display,
@@ -186,6 +185,9 @@ async function run() {
                     password: !!document.getElementById('authPassword'),
                     create: (document.getElementById('authEmailCreate') || {}).textContent || '',
                     forgot: (document.getElementById('authForgot') || {}).textContent || '',
+                    createPanelHidden: (document.getElementById('authCreatePanel') || {}).hidden,
+                    confirmOnSignIn: !!document.getElementById('authCreatePasswordConfirm')
+                        && document.getElementById('authCreatePasswordConfirm').offsetParent !== null,
                     guest: !!Array.from(document.querySelectorAll('button, a')).find((el) =>
                         /anonymous|guest|continue without/i.test(el.textContent || ''))
                 };
@@ -194,7 +196,9 @@ async function run() {
             ok('auth gate visible', gate.display === 'flex', gate.display);
             ok('Google sign-in present', /google/i.test(gate.google), gate.google);
             ok('Apple sign-in present', /apple/i.test(gate.apple), gate.apple);
-            ok('email sign-in present', gate.email && gate.password && /create/i.test(gate.create), JSON.stringify(gate));
+            ok('email sign-in present', gate.email && gate.password, JSON.stringify(gate));
+            ok('create account is a switch, not a shared submit', /create/i.test(gate.create) && gate.createPanelHidden === true, JSON.stringify(gate));
+            ok('confirm password is not on the sign-in panel', gate.confirmOnSignIn === false, JSON.stringify(gate));
             ok('forgot password present', /forgot/i.test(gate.forgot), gate.forgot);
             ok('no anonymous/guest continue', gate.guest === false);
             await shot(page, 'auth-gate-desktop.png');
@@ -207,6 +211,58 @@ async function run() {
             const forgotMsg = await page.$eval('#authError', (el) => el.textContent);
             ok('forgot password without email asks for email', /enter your email first/i.test(forgotMsg), forgotMsg);
             await shot(page, 'auth-forgot-empty-email.png');
+
+            await page.$eval('#authEmail', (el) => { el.value = 'river@example.com'; });
+            await page.click('#authEmailCreate');
+            await page.waitForFunction(() => {
+                const create = document.getElementById('authCreatePanel');
+                const signIn = document.getElementById('authSignInPanel');
+                return create && !create.hidden && signIn && signIn.hidden;
+            });
+            const createPanel = await page.evaluate(() => {
+                const create = document.getElementById('authCreatePanel');
+                const signIn = document.getElementById('authSignInPanel');
+                return {
+                    createVisible: create && !create.hidden,
+                    signInHidden: signIn ? signIn.hidden : null,
+                    email: (document.getElementById('authCreateEmail') || {}).value || '',
+                    password: !!document.getElementById('authCreatePassword'),
+                    confirm: !!document.getElementById('authCreatePasswordConfirm'),
+                    displayName: !!document.getElementById('authCreateDisplayName'),
+                    submit: (document.getElementById('authCreateSubmit') || {}).textContent || '',
+                    back: (document.getElementById('authShowSignIn') || {}).textContent || '',
+                    googleOnCreate: document.getElementById('authGoogleBtn')
+                        && document.getElementById('authGoogleBtn').offsetParent !== null
+                };
+            });
+            ok('create panel is its own step', createPanel.createVisible && createPanel.signInHidden === true, JSON.stringify(createPanel));
+            ok('create copies email from sign-in', createPanel.email === 'river@example.com', createPanel.email);
+            ok('create asks for password, confirm, and display name', createPanel.password && createPanel.confirm && createPanel.displayName, JSON.stringify(createPanel));
+            ok('create submit is Create account', /create account/i.test(createPanel.submit), createPanel.submit);
+            ok('create can switch back to sign in', /sign in/i.test(createPanel.back), createPanel.back);
+            ok('Google stays on the sign-in panel', createPanel.googleOnCreate === false, JSON.stringify(createPanel));
+            await shot(page, 'auth-create-panel.png');
+
+            await page.$eval('#authCreatePassword', (el) => { el.value = 'secret1'; });
+            await page.$eval('#authCreatePasswordConfirm', (el) => { el.value = 'secret2'; });
+            await page.$eval('#authCreateDisplayName', (el) => { el.value = 'River'; });
+            await page.click('#authCreateSubmit');
+            await page.waitForFunction(() => {
+                const el = document.getElementById('authError');
+                return el && !el.hidden && /passwords do not match/i.test(el.textContent || '');
+            });
+            const mismatch = await page.$eval('#authError', (el) => el.textContent);
+            ok('create rejects mismatched passwords', /passwords do not match/i.test(mismatch), mismatch);
+            await shot(page, 'auth-create-mismatch.png');
+
+            await page.click('#authShowSignIn');
+            await page.waitForFunction(() => {
+                const signIn = document.getElementById('authSignInPanel');
+                const create = document.getElementById('authCreatePanel');
+                return signIn && !signIn.hidden && create && create.hidden;
+            });
+            const backEmail = await page.$eval('#authEmail', (el) => el.value);
+            ok('sign-in copies email back from create', backEmail === 'river@example.com', backEmail);
         });
 
         await scenario('google sign-in before SDK does not crash', async (page) => {
@@ -257,6 +313,29 @@ async function run() {
             await shot(page, 'auth-gate-mobile.png');
             const visible = await page.evaluate(() => getComputedStyle(document.getElementById('authGate')).display);
             ok('auth gate visible on mobile', visible === 'flex', visible);
+            await page.click('#authEmailCreate');
+            await page.waitForFunction(() => {
+                const create = document.getElementById('authCreatePanel');
+                return create && !create.hidden;
+            });
+            await shot(page, 'auth-create-mobile.png');
+            const createVisible = await page.evaluate(() => {
+                const create = document.getElementById('authCreatePanel');
+                const card = document.querySelector('.auth-card');
+                const rect = card ? card.getBoundingClientRect() : null;
+                return {
+                    hidden: create ? create.hidden : null,
+                    cardTop: rect ? Math.round(rect.top) : null,
+                    cardBottom: rect ? Math.round(rect.bottom) : null,
+                    viewHeight: window.innerHeight
+                };
+            });
+            ok('create panel opens on mobile', createVisible.hidden === false, JSON.stringify(createVisible));
+            ok(
+                'create card stays on screen on mobile',
+                createVisible.cardTop >= 0 && createVisible.cardBottom <= createVisible.viewHeight + 40,
+                JSON.stringify(createVisible)
+            );
         });
 
         await scenario('display name gate and room rake', async (page) => {
@@ -286,7 +365,40 @@ async function run() {
             });
             ok('display name required after sign-in', nameGate.nameVisible && nameGate.gate === 'flex' && nameGate.pending, JSON.stringify(nameGate));
             ok('sign-in panel hidden on name gate', nameGate.signInHidden === true, JSON.stringify(nameGate));
+            const nameSignOut = await page.evaluate(() => {
+                const btn = document.getElementById('authNameSignOut');
+                const create = document.getElementById('authCreatePanel');
+                return {
+                    label: btn ? btn.textContent : '',
+                    createHidden: create ? create.hidden : null
+                };
+            });
+            ok('name gate can switch accounts', /different account/i.test(nameSignOut.label), JSON.stringify(nameSignOut));
+            ok('create panel hidden on name gate', nameSignOut.createHidden === true, JSON.stringify(nameSignOut));
             await shot(page, 'auth-display-name-gate.png');
+
+            await page.evaluate(() => {
+                AppAuth.signOut = async () => ({ configured: true, signedIn: false, displayName: '' });
+            });
+            await page.click('#authNameSignOut');
+            await page.waitForFunction(() => {
+                const signIn = document.getElementById('authSignInPanel');
+                const namePanel = document.getElementById('authDisplayNamePanel');
+                return signIn && !signIn.hidden && namePanel && namePanel.hidden;
+            });
+            const afterNameSignOut = await page.evaluate(() => ({
+                signInHidden: (document.getElementById('authSignInPanel') || {}).hidden,
+                nameHidden: (document.getElementById('authDisplayNamePanel') || {}).hidden,
+                pending: document.documentElement.classList.contains('auth-pending')
+            }));
+            ok('name-gate sign-out returns to sign-in', afterNameSignOut.signInHidden === false && afterNameSignOut.nameHidden === true && afterNameSignOut.pending, JSON.stringify(afterNameSignOut));
+            await page.evaluate(() => {
+                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+            });
+            await page.waitForFunction(() => {
+                const panel = document.getElementById('authDisplayNamePanel');
+                return panel && !panel.hidden;
+            });
 
             // Continue uses AppAuth.snapshot(); without a real Firebase user that
             // snapshot is signedOut and would re-lock. Drive the post-name unlock

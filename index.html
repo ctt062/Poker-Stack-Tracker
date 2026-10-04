@@ -438,12 +438,36 @@
                         <label for="authPassword">Password</label>
                         <input type="password" id="authPassword" autocomplete="current-password" minlength="6" required>
                     </div>
-                    <div class="form-buttons">
-                        <button type="submit" class="btn btn-primary" id="authEmailSignIn">Sign in</button>
-                        <button type="button" class="btn btn-secondary" id="authEmailCreate">Create account</button>
-                    </div>
+                    <button type="submit" class="btn btn-primary btn-auth" id="authEmailSignIn">Sign in</button>
                     <button type="button" class="btn btn-link" id="authForgot">Forgot password</button>
                 </form>
+                <p class="auth-switch">New here? <button type="button" class="btn btn-link" id="authEmailCreate">Create an account</button></p>
+            </div>
+
+            <div id="authCreatePanel" hidden>
+                <h2>Create account</h2>
+                <p class="auth-lead">Email, password, and a unique display name. This is how you appear in rooms.</p>
+                <form id="authCreateForm">
+                    <div class="form-group">
+                        <label for="authCreateEmail">Email</label>
+                        <input type="email" id="authCreateEmail" autocomplete="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="authCreatePassword">Password</label>
+                        <input type="password" id="authCreatePassword" autocomplete="new-password" minlength="6" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="authCreatePasswordConfirm">Confirm password</label>
+                        <input type="password" id="authCreatePasswordConfirm" autocomplete="new-password" minlength="6" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="authCreateDisplayName">Display name</label>
+                        <input type="text" id="authCreateDisplayName" maxlength="32" autocomplete="nickname" required>
+                        <p class="room-field-hint">Unique across everyone who uses this app. You can change it later in Settings.</p>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-auth" id="authCreateSubmit">Create account</button>
+                </form>
+                <p class="auth-switch">Already have an account? <button type="button" class="btn btn-link" id="authShowSignIn">Sign in</button></p>
             </div>
 
             <div id="authDisplayNamePanel" hidden>
@@ -456,6 +480,7 @@
                     </div>
                     <button type="submit" class="btn btn-primary btn-auth">Continue</button>
                 </form>
+                <p class="auth-switch">Wrong account? <button type="button" class="btn btn-link" id="authNameSignOut">Use a different account</button></p>
             </div>
 
             <p id="authError" class="room-error" hidden></p>

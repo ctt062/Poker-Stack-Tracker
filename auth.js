@@ -394,7 +394,7 @@
                 return snapshot();
             }
             const cred = await auth.signInWithPopup(provider);
-            applyUser(cred.user);
+            await applyUser(cred.user);
             return snapshot();
         } catch (e) {
             const code = e && e.code;
@@ -438,20 +438,32 @@
         await init();
         try {
             const cred = await auth.signInWithEmailAndPassword(String(email || '').trim(), password);
-            applyUser(cred.user);
+            await applyUser(cred.user);
             return snapshot();
         } catch (e) {
             throw friendlyAuthError(e);
         }
     }
 
-    async function createEmailAccount(email, password) {
+    async function createEmailAccount(email, password, displayName) {
         await init();
+        const trimmed = sanitizeDisplayName(displayName);
+        if (!trimmed) throw new Error('Enter a display name');
         try {
             const cred = await auth.createUserWithEmailAndPassword(String(email || '').trim(), password);
-            applyUser(cred.user);
+            currentUser = (cred.user && !cred.user.isAnonymous) ? cred.user : null;
+            try {
+                await claimDisplayName(trimmed);
+            } catch (nameErr) {
+                await applyUser(cred.user);
+                throw nameErr;
+            }
+            await applyUser(cred.user);
             return snapshot();
         } catch (e) {
+            if (e && !e.code && /already taken|display name/i.test(String(e.message || ''))) {
+                throw e;
+            }
             throw friendlyAuthError(e);
         }
     }
