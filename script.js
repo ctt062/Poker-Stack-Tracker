@@ -46,6 +46,7 @@ let clockTimer = null;
 let editingHouseId = null;
 let roomUiReady = false;
 let appUnlocked = false;
+let verifyPollId = null;
 
 // DOM Elements
 const addPlayerBtn = document.getElementById('addPlayerBtn');
@@ -1826,25 +1827,57 @@ function writeAuthInput(id, value) {
     if (el) el.value = value;
 }
 
+function stopVerifyPoll() {
+    if (verifyPollId) {
+        clearInterval(verifyPollId);
+        verifyPollId = null;
+    }
+}
+
+function startVerifyPoll() {
+    if (verifyPollId || !window.AppAuth || typeof AppAuth.refreshEmailVerification !== 'function') return;
+    verifyPollId = setInterval(() => {
+        const current = AppAuth.snapshot();
+        if (!current.signedIn) return;
+        AppAuth.refreshEmailVerification()
+            .then((snap) => applyAuthSnapshot(snap))
+            .catch(() => {});
+    }, 4000);
+}
+
+function needsEmailVerification(snap) {
+    if (!snap || !snap.signedIn) return false;
+    if (snap.provider === 'google.com') return false;
+    return snap.emailVerified !== true;
+}
+
 function showAuthPanel(which) {
     const signIn = document.getElementById('authSignInPanel');
     const create = document.getElementById('authCreatePanel');
+    const verify = document.getElementById('authVerifyPanel');
     const namePanel = document.getElementById('authDisplayNamePanel');
     if (signIn) signIn.hidden = which !== 'signin';
     if (create) create.hidden = which !== 'create';
+    if (verify) verify.hidden = which !== 'verify';
     if (namePanel) namePanel.hidden = which !== 'name';
     const lead = document.getElementById('authGateLead');
     if (lead) {
         lead.hidden = which !== 'signin';
     }
+    if (which === 'verify') startVerifyPoll();
+    else stopVerifyPoll();
     const err = document.getElementById('authError');
-    const panel = which === 'create' ? create : which === 'name' ? namePanel : signIn;
+    const panel = which === 'create' ? create
+        : which === 'verify' ? verify
+        : which === 'name' ? namePanel
+        : signIn;
     const sw = panel && panel.querySelector('.auth-switch');
     if (err && sw) sw.parentNode.insertBefore(err, sw);
     else if (err && panel) panel.appendChild(err);
 }
 
 function lockAppForAuth() {
+    stopVerifyPoll();
     const create = document.getElementById('authCreatePanel');
     const preserveCreate = !!(create && !create.hidden && !appUnlocked);
     appUnlocked = false;
@@ -1880,6 +1913,7 @@ function restoreJoinedRoom() {
 }
 
 function unlockApp() {
+    stopVerifyPoll();
     document.documentElement.classList.remove('auth-pending');
     document.body.classList.remove('auth-pending');
     updateAccountChip();
@@ -1898,6 +1932,18 @@ function applyAuthSnapshot(snap) {
     }
     if (!snap.signedIn) {
         lockAppForAuth();
+        return;
+    }
+    if (needsEmailVerification(snap)) {
+        document.documentElement.classList.add('auth-pending');
+        document.body.classList.add('auth-pending');
+        showAuthPanel('verify');
+        const verifyLead = document.getElementById('authVerifyLead');
+        if (verifyLead) {
+            verifyLead.textContent = snap.email
+                ? `We sent a verification link to ${snap.email}. Open it, then continue.`
+                : 'We sent a verification link to your email. Open it, then continue.';
+        }
         return;
     }
     if (!snap.displayName) {
@@ -1931,12 +1977,14 @@ async function handleAuthAction(fn, btn) {
 
 function initAuthUi() {
     const googleBtn = document.getElementById('authGoogleBtn');
-    const appleBtn = document.getElementById('authAppleBtn');
     const emailForm = document.getElementById('authEmailForm');
     const createLink = document.getElementById('authEmailCreate');
     const createForm = document.getElementById('authCreateForm');
     const showSignIn = document.getElementById('authShowSignIn');
     const forgotBtn = document.getElementById('authForgot');
+    const verifyContinue = document.getElementById('authVerifyContinue');
+    const verifyResend = document.getElementById('authVerifyResend');
+    const verifySignOut = document.getElementById('authVerifySignOut');
     const nameForm = document.getElementById('authDisplayNameForm');
     const nameSignOut = document.getElementById('authNameSignOut');
     const accountBtn = document.getElementById('accountBtn');
@@ -1945,9 +1993,6 @@ function initAuthUi() {
 
     if (googleBtn) {
         googleBtn.addEventListener('click', () => handleAuthAction(() => AppAuth.signInGoogle(), googleBtn));
-    }
-    if (appleBtn) {
-        appleBtn.addEventListener('click', () => handleAuthAction(() => AppAuth.signInApple(), appleBtn));
     }
     if (emailForm) {
         emailForm.addEventListener('submit', (e) => {
@@ -2005,6 +2050,39 @@ function initAuthUi() {
             } catch (e) {
                 setAuthError((e && e.message) || 'Could not send reset email');
             }
+        });
+    }
+    if (verifyContinue) {
+        verifyContinue.addEventListener('click', () => {
+            handleAuthAction(async () => {
+                const snap = await AppAuth.refreshEmailVerification();
+                if (needsEmailVerification(snap)) {
+                    throw new Error('Check your email and open the verification link first.');
+                }
+                return snap;
+            }, verifyContinue);
+        });
+    }
+    if (verifyResend) {
+        verifyResend.addEventListener('click', async () => {
+            setAuthError('');
+            verifyResend.disabled = true;
+            try {
+                await AppAuth.sendEmailVerification();
+                setAuthError('Verification email sent.');
+            } catch (e) {
+                setAuthError((e && e.message) || 'Could not send verification email');
+            } finally {
+                verifyResend.disabled = false;
+            }
+        });
+    }
+    if (verifySignOut) {
+        verifySignOut.addEventListener('click', async () => {
+            setAuthError('');
+            stopVerifyPoll();
+            if (window.AppAuth) await AppAuth.signOut();
+            applyAuthSnapshot(window.AppAuth ? AppAuth.snapshot() : { configured: false });
         });
     }
     if (nameForm) {
@@ -2100,7 +2178,7 @@ async function bootApp() {
     }
 
     lockAppForAuth();
-    const providerBtns = ['authGoogleBtn', 'authAppleBtn', 'authEmailSignIn', 'authCreateSubmit']
+    const providerBtns = ['authGoogleBtn', 'authEmailSignIn', 'authCreateSubmit']
         .map((id) => document.getElementById(id))
         .filter(Boolean);
     providerBtns.forEach((btn) => { btn.disabled = true; });

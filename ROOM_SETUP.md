@@ -15,9 +15,10 @@ Home-game traffic is tiny compared to Firebase free quotas. If you previously us
 1. **Build → Authentication → Get started**
 2. Enable these sign-in providers (this project already has Email/Password and Google via `firebase deploy --only auth`):
    - **Google** → Enable → set a support email → Save
-   - **Apple** → Enable, then add an Apple Developer Services ID, Team ID, Key ID, and private key (required for web). Without that, the Apple button cannot complete sign-in
    - **Email/Password** → Enable → Save
-3. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
+3. Do **not** enable Apple Sign-In unless you have an Apple Developer Program membership. The app does not show an Apple button.
+4. Email/password accounts must verify their address before the tracker or rooms unlock. The app sends Firebase's verification email on create and offers Resend.
+5. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
 
 Do not enable Anonymous Auth; the app does not use it. Sign-in and display name behavior is described in [README.md](README.md).
 
@@ -61,7 +62,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## 6. Verify
 
-1. Open the app on device A → sign in (Google, Apple, or email) → claim a unique display name if asked → **Room → Create room** → note the code
+1. Open the app on device A → sign in (Google, or email plus verification) → claim a unique display name if asked → **Room → Create room** → note the code
 2. Device B → sign in → claim a different unique display name → **Join** with the code
 3. B is **view only**; on A open **People → Allow edit** for B
 4. Edits should appear on the other device within about a second
@@ -72,7 +73,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 |--------|----------|
 | Solo | `localStorage` only (unchanged) |
 | Room | One Firestore doc per room + live `onSnapshot` |
-| Auth | Google, Apple, or email (`auth.uid`). Unique display names live in `displayNames/{lowercase}` plus `users/{uid}` |
+| Auth | Google or email (`auth.uid`). Email/password users must verify before writes. Unique display names live in `displayNames/{lowercase}` plus `users/{uid}` |
 | Host | Creator; edit; grant/revoke; end room (ending drops the host back to solo with the final numbers) |
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |

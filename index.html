@@ -419,7 +419,7 @@
         </div>
     </div>
 
-    <!-- Auth gate: Google / Apple / email before using the app when Firebase is configured -->
+    <!-- Auth gate: Google / email before using the app when Firebase is configured -->
     <div id="authGate" class="auth-gate">
         <div class="auth-card">
             <h1>Poker Stack Tracker</h1>
@@ -427,7 +427,6 @@
 
             <div id="authSignInPanel">
                 <button type="button" id="authGoogleBtn" class="btn btn-auth btn-auth-google">Continue with Google</button>
-                <button type="button" id="authAppleBtn" class="btn btn-auth btn-auth-apple">Continue with Apple</button>
                 <div class="room-divider">or email</div>
                 <form id="authEmailForm">
                     <div class="form-group">
@@ -446,7 +445,7 @@
 
             <div id="authCreatePanel" hidden>
                 <h2>Create account</h2>
-                <p class="auth-lead">Email, password, and a unique display name. This is how you appear in rooms.</p>
+                <p class="auth-lead">Email, password, and a unique display name. We will send a verification link before you can use the tracker.</p>
                 <form id="authCreateForm">
                     <div class="form-group">
                         <label for="authCreateEmail">Email</label>
@@ -468,6 +467,14 @@
                     <button type="submit" class="btn btn-primary btn-auth" id="authCreateSubmit">Create account</button>
                 </form>
                 <p class="auth-switch">Already have an account? <button type="button" class="btn btn-link" id="authShowSignIn">Sign in</button></p>
+            </div>
+
+            <div id="authVerifyPanel" hidden>
+                <h2>Verify your email</h2>
+                <p id="authVerifyLead" class="auth-lead">We sent a verification link to your email. Open it, then continue.</p>
+                <button type="button" class="btn btn-primary btn-auth" id="authVerifyContinue">I've verified</button>
+                <button type="button" class="btn btn-link" id="authVerifyResend">Resend email</button>
+                <p class="auth-switch">Wrong account? <button type="button" class="btn btn-link" id="authVerifySignOut">Use a different account</button></p>
             </div>
 
             <div id="authDisplayNamePanel" hidden>

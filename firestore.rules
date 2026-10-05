@@ -5,12 +5,16 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isHost() {
-      return isSignedIn() && resource.data.hostId == request.auth.uid;
+      return isVerified() && resource.data.hostId == request.auth.uid;
     }
 
     function isParticipant() {
-      return isSignedIn() && request.auth.uid in resource.data.participants;
+      return isVerified() && request.auth.uid in resource.data.participants;
     }
 
     function myRole() {
@@ -96,7 +100,7 @@ service cloud.firestore {
     // Anyone signed in may delete a room code when the room is gone, abandoned,
     // or they are still the host (end room / last leave).
     function canDeleteRoomCode() {
-      return isSignedIn() && (
+      return isVerified() && (
         !exists(roomPath(resource.data.roomId))
         || get(roomPath(resource.data.roomId)).data.hostId == request.auth.uid
         || get(roomPath(resource.data.roomId)).data.status in ['ended', 'abandoned']
@@ -111,9 +115,9 @@ service cloud.firestore {
     // Short code -> roomId (code secrecy is the main join gate, so codes and
     // rooms must never be enumerable: single-document gets only).
     match /roomCodes/{code} {
-      allow get: if isSignedIn();
+      allow get: if isVerified();
       allow list: if false;
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.keys().hasAll(['roomId', 'createdAt'])
         && request.resource.data.roomId is string
         && ownsRoomOrRoomMissing(request.resource.data.roomId);
@@ -123,9 +127,9 @@ service cloud.firestore {
 
     // Globally unique display names. Doc id is the lowercase trimmed name.
     match /displayNames/{nameKey} {
-      allow get: if isSignedIn();
+      allow get: if isVerified();
       allow list: if false;
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.keys().hasAll(['uid', 'displayName', 'nameKey'])
         && request.resource.data.nameKey == nameKey
@@ -133,28 +137,28 @@ service cloud.firestore {
         && request.resource.data.displayName.size() > 0
         && request.resource.data.displayName.size() <= 32
         && nameKey == request.resource.data.displayName.trim().lower();
-      allow update: if isSignedIn()
+      allow update: if isVerified()
         && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.nameKey == nameKey
         && nameKey == request.resource.data.displayName.trim().lower();
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow delete: if isVerified() && resource.data.uid == request.auth.uid;
     }
 
     match /users/{userId} {
       allow get: if isSignedIn() && request.auth.uid == userId;
       allow list: if false;
-      allow create, update: if isSignedIn()
+      allow create, update: if isVerified()
         && request.auth.uid == userId
         && request.resource.data.uid == request.auth.uid;
       allow delete: if false;
     }
 
     match /rooms/{roomId} {
-      allow get: if isSignedIn();
+      allow get: if isVerified();
       allow list: if false;
 
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.createdBy == request.auth.uid
         && request.auth.uid in request.resource.data.participants
@@ -164,7 +168,7 @@ service cloud.firestore {
         && getAfter(userPath()).data.createdRooms[roomId] == true
         && getAfter(userPath()).data.createdRooms.keys().size() <= 3;
 
-      allow update: if isSignedIn() && !roomIsExpired() && (
+      allow update: if isVerified() && !roomIsExpired() && (
         // Host: full control (roles, kick, transfer, abandon, game, etc.)
         isHost()
         // Editor: game state only while live

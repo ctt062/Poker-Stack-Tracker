@@ -90,7 +90,7 @@ function loadRoom(options = {}) {
             apps: [{}],
             initializeApp() {},
             auth() {
-                return { currentUser: { uid, isAnonymous: false } };
+                return { currentUser: { uid, isAnonymous: false, emailVerified: true } };
             },
             firestore
         },

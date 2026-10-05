@@ -103,13 +103,24 @@ function loadAuth(options = {}) {
                                 const created = {
                                     uid: options.newUid || 'new-user',
                                     email,
+                                    emailVerified: false,
                                     isAnonymous: false,
                                     displayName: '',
+                                    verificationSent: 0,
                                     providerData: [{ providerId: 'password' }],
                                     async updateProfile(profile) {
                                         if (profile && profile.displayName != null) {
                                             created.displayName = profile.displayName;
                                         }
+                                    },
+                                    async sendEmailVerification() {
+                                        created.verificationSent += 1;
+                                        if (options.sendVerificationError) {
+                                            throw options.sendVerificationError;
+                                        }
+                                    },
+                                    async reload() {
+                                        if (options.verifyOnReload) created.emailVerified = true;
                                     }
                                 };
                                 currentUser = created;
@@ -167,7 +178,13 @@ function loadAuth(options = {}) {
     sandbox.window = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(SOURCE, sandbox);
-    return { AppAuth: sandbox.AppAuth, storage, users, displayNames };
+    return {
+        AppAuth: sandbox.AppAuth,
+        storage,
+        users,
+        displayNames,
+        getUser: () => currentUser
+    };
 }
 
 const failures = [];
@@ -203,27 +220,6 @@ async function run() {
     }
 
     {
-        const { AppAuth } = loadAuth({ sdkLoads: false });
-        let err = null;
-        try {
-            await AppAuth.signInApple();
-        } catch (e) {
-            err = e;
-        }
-        const message = String((err && err.message) || err || '');
-        ok(
-            'Apple sign-in before SDK is a friendly error',
-            /could not reach firebase/i.test(message),
-            message
-        );
-        ok(
-            'Apple sign-in before SDK does not read undefined auth',
-            !/reading 'auth'/i.test(message) && !/undefined/i.test(message),
-            message
-        );
-    }
-
-    {
         const user = { uid: 'alice', isAnonymous: false, displayName: 'Alice From Google' };
         const { AppAuth, storage } = loadAuth({
             user,
@@ -237,9 +233,8 @@ async function run() {
             JSON.stringify(snap)
         );
         ok(
-            'legacy local display names are purged',
-            storage.getItem('pst_display_name_alice') == null
-                && storage.getItem('pst_display_name') == null
+            'legacy unscoped display names are purged',
+            storage.getItem('pst_display_name') == null
                 && storage.getItem('pst_display_name_epoch') === '2',
             JSON.stringify({
                 uid: storage.getItem('pst_display_name_alice'),
@@ -284,6 +279,7 @@ async function run() {
             uid: 'bob',
             isAnonymous: false,
             email: 'bob@example.com',
+            emailVerified: true,
             displayName: 'Ignored',
             providerData: [{ providerId: 'password' }]
         };
@@ -319,18 +315,54 @@ async function run() {
     }
 
     {
-        const { AppAuth, users, displayNames } = loadAuth({ user: null, newUid: 'new-user' });
+        const { AppAuth, users, displayNames, getUser } = loadAuth({ user: null, newUid: 'new-user' });
         await AppAuth.init();
         const snap = await AppAuth.createEmailAccount('new@example.com', 'secret1', 'River');
         ok(
-            'create account claims the display name in the same step',
-            snap.signedIn === true && snap.displayName === 'River' && snap.email === 'new@example.com',
+            'create account signs in unverified and does not claim the name yet',
+            snap.signedIn === true
+                && snap.emailVerified === false
+                && snap.displayName === ''
+                && snap.email === 'new@example.com',
             JSON.stringify(snap)
         );
         ok(
-            'create account writes the unique name registry',
-            displayNames.river && displayNames.river.uid === 'new-user'
-                && users['new-user'] && users['new-user'].displayName === 'River',
+            'create account sends a verification email',
+            getUser() && getUser().verificationSent === 1,
+            JSON.stringify(getUser() && { sent: getUser().verificationSent, emailVerified: getUser().emailVerified })
+        );
+        ok(
+            'create keeps the typed name as a suggestion until verify',
+            AppAuth.suggestedDisplayName() === 'River',
+            AppAuth.suggestedDisplayName()
+        );
+        ok(
+            'create does not write the unique name registry before verify',
+            !displayNames.river && !users['new-user'],
+            JSON.stringify({ users, displayNames })
+        );
+    }
+
+    {
+        const { AppAuth, users, displayNames } = loadAuth({
+            user: null,
+            newUid: 'verify-user',
+            verifyOnReload: true
+        });
+        await AppAuth.init();
+        await AppAuth.createEmailAccount('new@example.com', 'secret1', 'River');
+        const before = AppAuth.snapshot();
+        ok('create stays unverified until reload', before.emailVerified === false, JSON.stringify(before));
+        const snap = await AppAuth.refreshEmailVerification();
+        ok(
+            'verify claims the pending display name',
+            snap.emailVerified === true && snap.displayName === 'River',
+            JSON.stringify(snap)
+        );
+        ok(
+            'verify writes the unique name registry',
+            displayNames.river && displayNames.river.uid === 'verify-user'
+                && users['verify-user'] && users['verify-user'].displayName === 'River',
             JSON.stringify({ users, displayNames })
         );
     }
@@ -339,26 +371,16 @@ async function run() {
         const { AppAuth } = loadAuth({
             user: null,
             newUid: 'taken-user',
+            verifyOnReload: true,
             displayNames: { river: { uid: 'someone-else', displayName: 'River' } }
         });
         await AppAuth.init();
-        let err = null;
-        let snap = null;
-        try {
-            snap = await AppAuth.createEmailAccount('new@example.com', 'secret1', 'River');
-        } catch (e) {
-            err = e;
-            snap = AppAuth.snapshot();
-        }
+        await AppAuth.createEmailAccount('new@example.com', 'secret1', 'River');
+        const snap = await AppAuth.refreshEmailVerification();
         ok(
-            'create account with a taken name still signs the user in',
-            snap && snap.signedIn === true && snap.displayName === '',
+            'verified account with a taken name stays signed in without a claim',
+            snap.signedIn === true && snap.emailVerified === true && snap.displayName === '',
             JSON.stringify(snap)
-        );
-        ok(
-            'create account with a taken name reports the clash',
-            err && /already taken/i.test(String(err.message || '')),
-            String((err && err.message) || err)
         );
     }
 
@@ -366,16 +388,18 @@ async function run() {
         const { AppAuth, users, displayNames } = loadAuth({
             user: null,
             newUid: 'race-user',
+            verifyOnReload: true,
             refreshUserEmpty: true
         });
         await AppAuth.init();
+        await AppAuth.createEmailAccount('race@example.com', 'secret1', 'River');
         const signedInNames = [];
         AppAuth.on('user', (snap) => {
             if (snap && snap.signedIn) signedInNames.push(snap.displayName);
         });
-        const snap = await AppAuth.createEmailAccount('race@example.com', 'secret1', 'River');
+        const snap = await AppAuth.refreshEmailVerification();
         ok(
-            'create keeps claimed name when auth listener refresh is empty',
+            'verify keeps claimed name when auth listener refresh is empty',
             snap.signedIn === true && snap.displayName === 'River' && AppAuth.getDisplayName() === 'River',
             JSON.stringify({ snap, signedInNames, users, displayNames })
         );
@@ -385,7 +409,7 @@ async function run() {
             JSON.stringify(signedInNames)
         );
         ok(
-            'empty refresh after create does not drop the unique name registry',
+            'empty refresh after verify does not drop the unique name registry',
             displayNames.river && displayNames.river.uid === 'race-user'
                 && users['race-user'] && users['race-user'].displayName === 'River',
             JSON.stringify({ users, displayNames })
@@ -393,58 +417,79 @@ async function run() {
     }
 
     {
-        let finishRefresh;
-        const held = new Promise((resolve) => { finishRefresh = resolve; });
-        let refreshStarts = 0;
         const { AppAuth } = loadAuth({
             user: null,
-            newUid: 'late-user',
-            refreshUserGet: async () => {
-                refreshStarts += 1;
-                await held;
-                return { exists: false, data: () => undefined };
-            }
+            newUid: 'offline-user',
+            verifyOnReload: true,
+            refreshUserError: new Error('offline')
         });
         await AppAuth.init();
-        const pending = AppAuth.createEmailAccount('late@example.com', 'secret1', 'River');
-        const started = await new Promise((resolve) => {
-            const tick = () => {
-                if (refreshStarts > 0) resolve(true);
-                else setTimeout(tick, 0);
-            };
-            tick();
-        });
-        finishRefresh();
-        const snap = await pending;
-        ok('create waits for the in-flight name refresh', started === true, String(refreshStarts));
+        await AppAuth.createEmailAccount('offline@example.com', 'secret1', 'River');
+        const snap = await AppAuth.refreshEmailVerification();
         ok(
-            'late empty refresh cannot clobber a newer claimed name',
-            snap.signedIn === true && snap.displayName === 'River' && AppAuth.getDisplayName() === 'River',
+            'verify claims the pending name even if the registry refresh fails',
+            snap.signedIn === true && snap.emailVerified === true && snap.displayName === 'River',
             JSON.stringify(snap)
         );
     }
 
     {
-        const { AppAuth } = loadAuth({
-            user: null,
-            newUid: 'offline-user',
-            refreshUserError: new Error('offline')
-        });
+        const user = {
+            uid: 'unverified',
+            isAnonymous: false,
+            email: 'u@example.com',
+            emailVerified: false,
+            providerData: [{ providerId: 'password' }]
+        };
+        const { AppAuth } = loadAuth({ user });
         await AppAuth.init();
-        const signedInNames = [];
-        AppAuth.on('user', (snap) => {
-            if (snap && snap.signedIn) signedInNames.push(snap.displayName);
-        });
-        const snap = await AppAuth.createEmailAccount('offline@example.com', 'secret1', 'River');
+        let err = null;
+        try {
+            await AppAuth.ensureAuth();
+        } catch (e) {
+            err = e;
+        }
         ok(
-            'failed name refresh after claim does not wipe the claimed name',
-            snap.signedIn === true && snap.displayName === 'River' && AppAuth.getDisplayName() === 'River',
-            JSON.stringify({ snap, signedInNames })
+            'ensureAuth rejects unverified email accounts',
+            !!(err && /verify your email/i.test(String(err.message || ''))),
+            String((err && err.message) || err)
         );
+    }
+
+    {
+        const user = {
+            uid: 'google-user',
+            isAnonymous: false,
+            email: 'g@example.com',
+            emailVerified: false,
+            providerData: [{ providerId: 'google.com' }]
+        };
+        const { AppAuth } = loadAuth({ user });
+        const snap = await AppAuth.ensureAuth();
         ok(
-            'failed name refresh does not emit a blank name over the claim',
-            signedInNames.length > 0 && signedInNames.every((name) => name === 'River'),
-            JSON.stringify(signedInNames)
+            'ensureAuth allows Google without a password verification step',
+            snap.signedIn === true && snap.provider === 'google.com',
+            JSON.stringify(snap)
+        );
+    }
+
+    {
+        const user = {
+            uid: 'verified',
+            isAnonymous: false,
+            email: 'v@example.com',
+            emailVerified: true,
+            providerData: [{ providerId: 'password' }]
+        };
+        const { AppAuth } = loadAuth({
+            user,
+            users: { verified: { uid: 'verified', displayName: 'River', nameKey: 'river' } }
+        });
+        const snap = await AppAuth.ensureAuth();
+        ok(
+            'ensureAuth allows verified email accounts',
+            snap.signedIn === true && snap.emailVerified === true,
+            JSON.stringify(snap)
         );
     }
 

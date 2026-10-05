@@ -180,7 +180,7 @@ async function run() {
                     pending: document.documentElement.classList.contains('auth-pending'),
                     display: style.display,
                     google: (document.getElementById('authGoogleBtn') || {}).textContent || '',
-                    apple: (document.getElementById('authAppleBtn') || {}).textContent || '',
+                    apple: !!document.getElementById('authAppleBtn'),
                     email: !!document.getElementById('authEmail'),
                     password: !!document.getElementById('authPassword'),
                     create: (document.getElementById('authEmailCreate') || {}).textContent || '',
@@ -195,7 +195,7 @@ async function run() {
             ok('auth gate pending with Firebase config', gate.pending);
             ok('auth gate visible', gate.display === 'flex', gate.display);
             ok('Google sign-in present', /google/i.test(gate.google), gate.google);
-            ok('Apple sign-in present', /apple/i.test(gate.apple), gate.apple);
+            ok('Apple sign-in is not offered', gate.apple === false, JSON.stringify(gate));
             ok('email sign-in present', gate.email && gate.password, JSON.stringify(gate));
             ok('create account is a switch, not a shared submit', /create/i.test(gate.create) && gate.createPanelHidden === true, JSON.stringify(gate));
             ok('confirm password is not on the sign-in panel', gate.confirmOnSignIn === false, JSON.stringify(gate));
@@ -382,6 +382,64 @@ async function run() {
                     signedIn: true,
                     displayName: 'Alice',
                     email: 'alice@example.com',
+                    emailVerified: false,
+                    provider: 'password',
+                    providerLabel: 'Email'
+                });
+            });
+            await page.waitForFunction(() => {
+                const verify = document.getElementById('authVerifyPanel');
+                return verify && !verify.hidden
+                    && document.documentElement.classList.contains('auth-pending');
+            });
+            const verifyPanel = await page.evaluate(() => {
+                const verify = document.getElementById('authVerifyPanel');
+                const lead = document.getElementById('authVerifyLead');
+                return {
+                    visible: verify && !verify.hidden,
+                    lead: lead ? lead.textContent : '',
+                    continueBtn: (document.getElementById('authVerifyContinue') || {}).textContent || '',
+                    resend: (document.getElementById('authVerifyResend') || {}).textContent || '',
+                    createHidden: (document.getElementById('authCreatePanel') || {}).hidden
+                };
+            });
+            ok(
+                'unverified email account is held on the verify panel',
+                verifyPanel.visible && verifyPanel.createHidden === true
+                    && /alice@example.com/i.test(verifyPanel.lead)
+                    && /verified/i.test(verifyPanel.continueBtn)
+                    && /resend/i.test(verifyPanel.resend),
+                JSON.stringify(verifyPanel)
+            );
+            await shot(page, 'auth-verify-email.png');
+
+            await page.evaluate(() => {
+                AppAuth.refreshEmailVerification = async () => ({
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'Alice',
+                    email: 'alice@example.com',
+                    emailVerified: false,
+                    provider: 'password',
+                    providerLabel: 'Email'
+                });
+            });
+            await page.click('#authVerifyContinue');
+            await page.waitForFunction(() => {
+                const el = document.getElementById('authError');
+                return el && !el.hidden && /verification link/i.test(el.textContent || '');
+            });
+            const stillUnverified = await page.$eval('#authError', (el) => el.textContent);
+            ok('continue without verifying asks to open the email link', /verification link/i.test(stillUnverified), stillUnverified);
+
+            await page.evaluate(() => {
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'Alice',
+                    email: 'alice@example.com',
+                    emailVerified: true,
+                    provider: 'password',
                     providerLabel: 'Email'
                 });
             });
@@ -454,7 +512,36 @@ async function run() {
                 try { await AppAuth.init(); } catch (e) { /* gate still works if SDK is unreachable */ }
             });
             await page.evaluate(() => {
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: false,
+                    provider: 'google.com'
+                });
+            });
+            await page.waitForFunction(() => {
+                const panel = document.getElementById('authDisplayNamePanel');
+                const verify = document.getElementById('authVerifyPanel');
+                return panel && !panel.hidden && verify && verify.hidden;
+            });
+            const googleSkipsVerify = await page.evaluate(() => ({
+                nameVisible: !(document.getElementById('authDisplayNamePanel') || {}).hidden,
+                verifyHidden: (document.getElementById('authVerifyPanel') || {}).hidden
+            }));
+            ok(
+                'Google skips the email verify panel',
+                googleSkipsVerify.nameVisible === true && googleSkipsVerify.verifyHidden === true,
+                JSON.stringify(googleSkipsVerify)
+            );
+            await page.evaluate(() => {
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: true,
+                    provider: 'google.com'
+                });
             });
             await page.waitForFunction(() => {
                 const panel = document.getElementById('authDisplayNamePanel');
@@ -521,7 +608,13 @@ async function run() {
                 JSON.stringify(afterNameSignOut)
             );
             await page.evaluate(() => {
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: true,
+                    provider: 'google.com'
+                });
             });
             await page.waitForFunction(() => {
                 const panel = document.getElementById('authDisplayNamePanel');
@@ -532,7 +625,15 @@ async function run() {
             // snapshot is signedOut and would re-lock. Drive the post-name unlock
             // the way boot does after a signed-in user with a claimed name.
             await page.evaluate(() => {
-                const claimed = { configured: true, signedIn: true, displayName: 'River', email: '', providerLabel: 'Google' };
+                const claimed = {
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'River',
+                    email: '',
+                    emailVerified: true,
+                    provider: 'google.com',
+                    providerLabel: 'Google'
+                };
                 AppAuth.getDisplayName = () => 'River';
                 AppAuth.snapshot = () => claimed;
                 applyAuthSnapshot(claimed);
@@ -631,7 +732,13 @@ async function run() {
 
             await page.evaluate(() => { window.__roomRenames = []; });
             await page.evaluate(() => {
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: true,
+                    provider: 'google.com'
+                });
             });
             await page.waitForFunction(() => {
                 const panel = document.getElementById('authDisplayNamePanel');

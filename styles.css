@@ -1826,7 +1826,8 @@ body.compact-mode .account-avatar {
     vertical-align: baseline;
 }
 
-#authForgot {
+#authForgot,
+#authVerifyResend {
     display: block;
     width: 100%;
     text-align: center;
@@ -1887,35 +1888,16 @@ body.auth-pending #authGate {
     justify-content: center;
 }
 
-.btn-auth-google,
-.btn-auth-apple {
+.btn-auth-google {
     background: var(--bg-primary);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
     font-weight: 600;
 }
 
-.btn-auth-google:hover,
-.btn-auth-apple:hover {
+.btn-auth-google:hover {
     border-color: var(--accent-primary);
     color: var(--accent-primary);
-}
-
-.btn-auth-apple {
-    background: #111;
-    color: #fff;
-    border-color: #111;
-}
-
-body:not(.dark-mode) .btn-auth-apple {
-    background: #000;
-    color: #fff;
-}
-
-.btn-auth-apple:hover {
-    background: #222;
-    color: #fff;
-    border-color: #222;
 }
 
 html.auth-pending body > .container,

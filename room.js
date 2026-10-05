@@ -1,6 +1,6 @@
 /**
  * Room sync layer: multi-device shared session via Firebase Auth + Firestore.
- * Sign-in is Google / Apple / email (see auth.js). Anonymous auth is not used.
+ * Sign-in is Google / email (see auth.js). Anonymous auth is not used.
  * If Firebase is not configured, create/join is disabled and the app stays local-only.
  */
 (function (global) {
@@ -315,7 +315,12 @@
         db = global.firebase.firestore();
 
         if (!auth.currentUser || auth.currentUser.isAnonymous) {
-            throw new Error('Sign in with Google, Apple, or email first.');
+            throw new Error('Sign in with Google or email first.');
+        }
+        const providers = auth.currentUser.providerData || [];
+        const isGoogle = providers.some((p) => p && p.providerId === 'google.com');
+        if (!isGoogle && !auth.currentUser.emailVerified) {
+            throw new Error('Verify your email first.');
         }
 
         initialized = true;

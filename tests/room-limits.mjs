@@ -127,7 +127,14 @@ function loadRoom(options = {}) {
             apps: [{}],
             initializeApp() {},
             auth() {
-                return { currentUser: { uid, isAnonymous: false } };
+                return {
+                    currentUser: {
+                        uid,
+                        isAnonymous: false,
+                        emailVerified: options.emailVerified !== false,
+                        providerData: options.providerData || [{ providerId: 'password' }]
+                    }
+                };
             },
             firestore
         },
@@ -180,6 +187,34 @@ function liveRoom(uid, code) {
 }
 
 async function run() {
+    {
+        const { RoomSync } = loadRoom({ emailVerified: false });
+        let err = null;
+        try {
+            await RoomSync.createRoom('River', { players: [] });
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'unverified email cannot create a room',
+            !!(err && /verify your email/i.test(String(err.message || ''))),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const { RoomSync, rooms } = loadRoom({
+            emailVerified: false,
+            providerData: [{ providerId: 'google.com' }]
+        });
+        const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
+        ok(
+            'Google can create a room without a password verification step',
+            !!(snap && snap.roomId && rooms[snap.roomId]),
+            JSON.stringify(snap)
+        );
+    }
+
     {
         const { RoomSync, rooms, users, uid } = loadRoom();
         const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
