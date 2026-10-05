@@ -675,6 +675,18 @@ async function run() {
             ok('room modal shows display name after auth', room.value === 'River', room.value);
             ok('room display name is not editable', room.tag !== 'INPUT', room.tag);
             ok('room rake toggle present on create', room.rakeToggle);
+            const joinField = await page.evaluate(() => {
+                const el = document.getElementById('joinRoomCode');
+                return {
+                    placeholder: el ? el.placeholder : '',
+                    maxLength: el ? el.maxLength : null
+                };
+            });
+            ok(
+                'join code field is 4-digit',
+                joinField.placeholder === '1234' && joinField.maxLength === 5,
+                JSON.stringify(joinField)
+            );
             const capHint = await page.evaluate(() => {
                 const hints = Array.from(document.querySelectorAll('#roomSoloPanel .room-field-hint')).map((el) => el.textContent);
                 return hints.join(' ');
@@ -924,6 +936,111 @@ async function run() {
             }));
             ok('reset returns the clock to 00:00:00 and Start', resetState.time === '00:00:00' && resetState.btn === 'Start' && resetState.resetDisabled, JSON.stringify(resetState));
             await shot(page, 'session-clock-reset.png');
+
+            const headerClock = await page.evaluate(() => {
+                const btn = document.getElementById('actionClockBtn');
+                const theme = document.getElementById('themeToggle');
+                const br = btn ? btn.getBoundingClientRect() : null;
+                const tr = theme ? theme.getBoundingClientRect() : null;
+                return {
+                    present: !!btn,
+                    title: btn ? btn.getAttribute('title') : '',
+                    inHeader: !!(btn && btn.closest('.header-buttons')),
+                    width: br ? Math.round(br.width) : 0,
+                    themeWidth: tr ? Math.round(tr.width) : 0
+                };
+            });
+            ok('action clock button sits in the header cluster', headerClock.present && headerClock.inHeader && /clock/i.test(headerClock.title), JSON.stringify(headerClock));
+            ok(
+                'action clock button matches other header button size',
+                headerClock.width > 0 && Math.abs(headerClock.width - headerClock.themeWidth) <= 2,
+                JSON.stringify(headerClock)
+            );
+            await tap(page, '#actionClockBtn');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && !overlay.hidden;
+            });
+            const clockSetup = await page.evaluate(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                const selected = document.querySelector('.action-clock-preset.is-selected');
+                return {
+                    visible: overlay && !overlay.hidden,
+                    time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                    selected: selected ? selected.getAttribute('data-seconds') : '',
+                    start: (document.getElementById('actionClockStart') || {}).textContent || '',
+                    fullscreen: overlay ? getComputedStyle(overlay).position === 'fixed' : false
+                };
+            });
+            ok(
+                'action clock opens full screen at 60s by default',
+                clockSetup.visible && clockSetup.fullscreen && clockSetup.time === '1:00'
+                    && clockSetup.selected === '60' && /start/i.test(clockSetup.start),
+                JSON.stringify(clockSetup)
+            );
+            await shot(page, 'action-clock-setup.png');
+            await tap(page, '.action-clock-preset[data-seconds="30"]');
+            await page.waitForFunction(() => (document.getElementById('actionClockTime') || {}).textContent === '0:30');
+            await tap(page, '#actionClockStart');
+            await page.waitForFunction(() => {
+                const pause = document.getElementById('actionClockPause');
+                const start = document.getElementById('actionClockStart');
+                return pause && !pause.hidden && start && start.hidden;
+            });
+            await new Promise((resolve) => setTimeout(resolve, 1300));
+            const running = await page.evaluate(() => ({
+                time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                pause: (document.getElementById('actionClockPause') || {}).textContent || ''
+            }));
+            ok(
+                'action clock counts down after start',
+                /^0:2[789]$/.test(running.time) && /pause/i.test(running.pause),
+                JSON.stringify(running)
+            );
+            await tap(page, '#actionClockPause');
+            await page.waitForFunction(() => (document.getElementById('actionClockPause') || {}).textContent === 'Resume');
+            const pausedAction = await page.$eval('#actionClockTime', (el) => el.textContent);
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            const stillPausedAction = await page.$eval('#actionClockTime', (el) => el.textContent);
+            ok('paused action clock does not keep ticking', stillPausedAction === pausedAction, `${pausedAction} -> ${stillPausedAction}`);
+            await tap(page, '#actionClockClose');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && overlay.hidden;
+            });
+            await tap(page, '#actionClockBtn');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && !overlay.hidden;
+            });
+            const remembered = await page.evaluate(() => {
+                const selected = document.querySelector('.action-clock-preset.is-selected');
+                return {
+                    time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                    selected: selected ? selected.getAttribute('data-seconds') : ''
+                };
+            });
+            ok('action clock remembers the last duration', remembered.selected === '30' && remembered.time === '0:30', JSON.stringify(remembered));
+            await tap(page, '#actionClockCustomPreset');
+            await page.waitForFunction(() => {
+                const row = document.getElementById('actionClockCustomRow');
+                return row && !row.hidden;
+            });
+            await page.$eval('#actionClockCustomInput', (el) => { el.value = '15'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+            await page.waitForFunction(() => (document.getElementById('actionClockTime') || {}).textContent === '0:15');
+            const custom = await page.evaluate(() => ({
+                time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                selected: (document.querySelector('.action-clock-preset.is-selected') || {}).getAttribute
+                    ? document.querySelector('.action-clock-preset.is-selected').getAttribute('data-seconds')
+                    : ''
+            }));
+            ok('custom action clock duration is accepted', custom.time === '0:15' && custom.selected === 'custom', JSON.stringify(custom));
+            await shot(page, 'action-clock-custom.png');
+            await tap(page, '#actionClockClose');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && overlay.hidden;
+            });
 
             await tap(page, '#blindDisplay');
             await page.waitForSelector('#blindModal', { visible: true });

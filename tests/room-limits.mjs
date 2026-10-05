@@ -219,6 +219,7 @@ async function run() {
         const { RoomSync, rooms, users, uid } = loadRoom();
         const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
         ok('create room returns snapshot', !!(snap && snap.roomId && snap.code), JSON.stringify(snap));
+        ok('create room uses a 4-digit code', /^\d{4}$/.test(snap.code), snap.code);
         const created = rooms[snap.roomId];
         ok(
             'create room stores createdBy and expiresAt',
@@ -238,6 +239,22 @@ async function run() {
             'expiry is about one week',
             delta > 6 * 24 * 60 * 60 * 1000 && delta < 8 * 24 * 60 * 60 * 1000,
             String(delta)
+        );
+    }
+
+    {
+        const rooms = { r1: liveRoom('host', '0421') };
+        const { RoomSync } = loadRoom({
+            uid: 'bob',
+            rooms,
+            roomCodes: { '0421': { roomId: 'r1' } },
+            users: { bob: { uid: 'bob', createdRooms: {} } }
+        });
+        const snap = await RoomSync.joinRoom(' 0421 ', 'Bob');
+        ok(
+            'join accepts a 4-digit code',
+            !!(snap && snap.roomId === 'r1' && snap.code === '0421'),
+            JSON.stringify(snap)
         );
     }
 

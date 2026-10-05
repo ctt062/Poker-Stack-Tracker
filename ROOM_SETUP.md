@@ -77,7 +77,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 | Host | Creator; edit; grant/revoke; end room (ending drops the host back to solo with the final numbers) |
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |
-| Code | 5-char code in `roomCodes/{code}` → `rooms/{id}` |
+| Code | 4-digit code (`0000`-`9999`) in `roomCodes/{code}` → `rooms/{id}` |
 | Room cap | One account can have **3** created rooms at a time (`users/{uid}.createdRooms`). End a room or wait for expiry to create another. |
 | Room lifetime | Each room stores `expiresAt` (~7 days after create). Join, restore, create, and the live listener delete expired rooms and their codes. Ended or abandoned rooms expire immediately. |
 | Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
@@ -85,7 +85,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## Optional deep link
 
-`https://yoursite/Poker-Stack-Tracker/?room=ABC12` prefills the join code.
+`https://yoursite/Poker-Stack-Tracker/?room=0421` prefills the join code.
 
 ## Cost / limits
 
