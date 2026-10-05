@@ -1,5 +1,5 @@
 /**
- * Sign-in (Google, Apple, email) and default display name.
+ * Sign-in (Google, email) and default display name.
  * Rooms reuse this Firebase Auth session; anonymous sign-in is not used.
  */
 (function (global) {
@@ -82,11 +82,6 @@
     function friendlyAuthError(err, providerHint) {
         const code = (err && err.code) || '';
         const raw = String((err && err.message) || '');
-        if (/code flow is not enabled for apple/i.test(raw) || providerHint === 'apple.com' && code === 'auth/operation-not-allowed') {
-            const wrapped = new Error('Apple Sign-In needs an Apple Developer Services ID and key in Firebase Authentication. Use Google or email until that is set up.');
-            wrapped.code = code;
-            return wrapped;
-        }
         const map = {
             'auth/popup-closed-by-user': 'Sign-in was cancelled.',
             'auth/cancelled-popup-request': 'Sign-in was cancelled.',
@@ -127,9 +122,18 @@
 
     function providerLabel(id) {
         if (id === 'google.com') return 'Google';
-        if (id === 'apple.com') return 'Apple';
         if (id === 'password') return 'Email';
         return id || '';
+    }
+
+    function verificationActionCodeSettings() {
+        try {
+            if (!global.location || !global.location.origin) return undefined;
+            const path = global.location.pathname || '/';
+            return { url: global.location.origin + path, handleCodeInApp: false };
+        } catch (e) {
+            return undefined;
+        }
     }
 
     function sanitizeDisplayName(value) {
@@ -297,7 +301,6 @@
             if (!name) {
                 if (registryName) return;
                 registryName = '';
-                clearLocalName(uid);
                 return;
             }
             registryName = name;
@@ -317,6 +320,7 @@
             photoURL: signedIn ? (currentUser.photoURL || '') : '',
             provider: signedIn ? providerId(currentUser) : '',
             providerLabel: signedIn ? providerLabel(providerId(currentUser)) : '',
+            emailVerified: signedIn ? !!currentUser.emailVerified : false,
             displayName: getDisplayName()
         };
     }
@@ -333,11 +337,24 @@
             }
             currentUser = next;
             await refreshClaimedName(epoch);
+            if (epoch === nameEpoch && next.emailVerified && !registryName && providerId(next) === 'password') {
+                const pending = readLocalName(next.uid);
+                if (pending) {
+                    try {
+                        await claimDisplayName(pending);
+                    } catch (e) {
+                        if (!e || !/already taken/i.test(String(e.message || ''))) {
+                            console.warn('claimPendingName', e);
+                        }
+                    }
+                }
+            }
         } else if (epoch === nameEpoch) {
             currentUser = null;
             registryName = '';
         }
-        if (epoch !== nameEpoch) return;
+        if (next && currentUser !== next) return;
+        if (!next && epoch !== nameEpoch) return;
         emit('user', snapshot());
     }
 
@@ -398,7 +415,10 @@
     async function ensureAuth() {
         const snap = await init();
         if (!isConfigured()) return snap;
-        if (!snap.signedIn) throw new Error('Sign in with Google, Apple, or email first.');
+        if (!snap.signedIn) throw new Error('Sign in with Google or email first.');
+        if (snap.provider !== 'google.com' && !snap.emailVerified) {
+            throw new Error('Verify your email first.');
+        }
         return snap;
     }
 
@@ -439,18 +459,6 @@
         return signInWithProvider(provider, 'google.com');
     }
 
-    async function signInApple() {
-        await init();
-        const AuthNS = requireAuthSdk();
-        if (typeof AuthNS.OAuthProvider !== 'function') {
-            throw new Error('Could not reach Firebase. Check your connection and try again.');
-        }
-        const provider = new AuthNS.OAuthProvider('apple.com');
-        provider.addScope('email');
-        provider.addScope('name');
-        return signInWithProvider(provider, 'apple.com');
-    }
-
     async function signInEmail(email, password) {
         await init();
         try {
@@ -470,22 +478,57 @@
         try {
             const cred = await auth.createUserWithEmailAndPassword(String(email || '').trim(), password);
             currentUser = (cred.user && !cred.user.isAnonymous) ? cred.user : null;
+            const settings = verificationActionCodeSettings();
             try {
-                await claimDisplayName(trimmed);
-            } catch (nameErr) {
-                await applyUser(cred.user);
-                throw nameErr;
+                if (settings) await cred.user.sendEmailVerification(settings);
+                else await cred.user.sendEmailVerification();
+            } catch (verifyErr) {
+                console.warn('sendEmailVerification', verifyErr);
+            }
+            writeLocalName(cred.user.uid, trimmed);
+            try {
+                await cred.user.updateProfile({ displayName: trimmed });
+            } catch (e) {
+                console.warn('updateProfile', e);
             }
             await applyUser(cred.user);
             return snapshot();
         } catch (e) {
-            if (e && !e.code && /already taken|display name/i.test(String(e.message || ''))) {
-                throw e;
-            }
             throw friendlyAuthError(e);
         } finally {
             applyHeld = false;
         }
+    }
+
+    async function refreshEmailVerification() {
+        await init();
+        if (!auth || !auth.currentUser) return snapshot();
+        applyHeld = true;
+        try {
+            try {
+                await auth.currentUser.reload();
+            } catch (e) {
+                throw friendlyAuthError(e);
+            }
+            await applyUser(auth.currentUser);
+            return snapshot();
+        } finally {
+            applyHeld = false;
+        }
+    }
+
+    async function sendEmailVerification() {
+        await init();
+        if (!auth || !auth.currentUser) throw new Error('Sign in first.');
+        if (auth.currentUser.emailVerified) return snapshot();
+        try {
+            const settings = verificationActionCodeSettings();
+            if (settings) await auth.currentUser.sendEmailVerification(settings);
+            else await auth.currentUser.sendEmailVerification();
+        } catch (e) {
+            throw friendlyAuthError(e);
+        }
+        return snapshot();
     }
 
     async function sendPasswordReset(email) {
@@ -534,9 +577,10 @@
         suggestedDisplayName,
         setDisplayName,
         signInGoogle,
-        signInApple,
         signInEmail,
         createEmailAccount,
+        refreshEmailVerification,
+        sendEmailVerification,
         sendPasswordReset,
         signOut,
         on

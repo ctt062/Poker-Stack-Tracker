@@ -180,7 +180,7 @@ async function run() {
                     pending: document.documentElement.classList.contains('auth-pending'),
                     display: style.display,
                     google: (document.getElementById('authGoogleBtn') || {}).textContent || '',
-                    apple: (document.getElementById('authAppleBtn') || {}).textContent || '',
+                    apple: !!document.getElementById('authAppleBtn'),
                     email: !!document.getElementById('authEmail'),
                     password: !!document.getElementById('authPassword'),
                     create: (document.getElementById('authEmailCreate') || {}).textContent || '',
@@ -195,7 +195,7 @@ async function run() {
             ok('auth gate pending with Firebase config', gate.pending);
             ok('auth gate visible', gate.display === 'flex', gate.display);
             ok('Google sign-in present', /google/i.test(gate.google), gate.google);
-            ok('Apple sign-in present', /apple/i.test(gate.apple), gate.apple);
+            ok('Apple sign-in is not offered', gate.apple === false, JSON.stringify(gate));
             ok('email sign-in present', gate.email && gate.password, JSON.stringify(gate));
             ok('create account is a switch, not a shared submit', /create/i.test(gate.create) && gate.createPanelHidden === true, JSON.stringify(gate));
             ok('confirm password is not on the sign-in panel', gate.confirmOnSignIn === false, JSON.stringify(gate));
@@ -382,6 +382,64 @@ async function run() {
                     signedIn: true,
                     displayName: 'Alice',
                     email: 'alice@example.com',
+                    emailVerified: false,
+                    provider: 'password',
+                    providerLabel: 'Email'
+                });
+            });
+            await page.waitForFunction(() => {
+                const verify = document.getElementById('authVerifyPanel');
+                return verify && !verify.hidden
+                    && document.documentElement.classList.contains('auth-pending');
+            });
+            const verifyPanel = await page.evaluate(() => {
+                const verify = document.getElementById('authVerifyPanel');
+                const lead = document.getElementById('authVerifyLead');
+                return {
+                    visible: verify && !verify.hidden,
+                    lead: lead ? lead.textContent : '',
+                    continueBtn: (document.getElementById('authVerifyContinue') || {}).textContent || '',
+                    resend: (document.getElementById('authVerifyResend') || {}).textContent || '',
+                    createHidden: (document.getElementById('authCreatePanel') || {}).hidden
+                };
+            });
+            ok(
+                'unverified email account is held on the verify panel',
+                verifyPanel.visible && verifyPanel.createHidden === true
+                    && /alice@example.com/i.test(verifyPanel.lead)
+                    && /verified/i.test(verifyPanel.continueBtn)
+                    && /resend/i.test(verifyPanel.resend),
+                JSON.stringify(verifyPanel)
+            );
+            await shot(page, 'auth-verify-email.png');
+
+            await page.evaluate(() => {
+                AppAuth.refreshEmailVerification = async () => ({
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'Alice',
+                    email: 'alice@example.com',
+                    emailVerified: false,
+                    provider: 'password',
+                    providerLabel: 'Email'
+                });
+            });
+            await page.click('#authVerifyContinue');
+            await page.waitForFunction(() => {
+                const el = document.getElementById('authError');
+                return el && !el.hidden && /verification link/i.test(el.textContent || '');
+            });
+            const stillUnverified = await page.$eval('#authError', (el) => el.textContent);
+            ok('continue without verifying asks to open the email link', /verification link/i.test(stillUnverified), stillUnverified);
+
+            await page.evaluate(() => {
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'Alice',
+                    email: 'alice@example.com',
+                    emailVerified: true,
+                    provider: 'password',
                     providerLabel: 'Email'
                 });
             });
@@ -454,7 +512,36 @@ async function run() {
                 try { await AppAuth.init(); } catch (e) { /* gate still works if SDK is unreachable */ }
             });
             await page.evaluate(() => {
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: false,
+                    provider: 'google.com'
+                });
+            });
+            await page.waitForFunction(() => {
+                const panel = document.getElementById('authDisplayNamePanel');
+                const verify = document.getElementById('authVerifyPanel');
+                return panel && !panel.hidden && verify && verify.hidden;
+            });
+            const googleSkipsVerify = await page.evaluate(() => ({
+                nameVisible: !(document.getElementById('authDisplayNamePanel') || {}).hidden,
+                verifyHidden: (document.getElementById('authVerifyPanel') || {}).hidden
+            }));
+            ok(
+                'Google skips the email verify panel',
+                googleSkipsVerify.nameVisible === true && googleSkipsVerify.verifyHidden === true,
+                JSON.stringify(googleSkipsVerify)
+            );
+            await page.evaluate(() => {
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: true,
+                    provider: 'google.com'
+                });
             });
             await page.waitForFunction(() => {
                 const panel = document.getElementById('authDisplayNamePanel');
@@ -521,7 +608,13 @@ async function run() {
                 JSON.stringify(afterNameSignOut)
             );
             await page.evaluate(() => {
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: true,
+                    provider: 'google.com'
+                });
             });
             await page.waitForFunction(() => {
                 const panel = document.getElementById('authDisplayNamePanel');
@@ -532,7 +625,15 @@ async function run() {
             // snapshot is signedOut and would re-lock. Drive the post-name unlock
             // the way boot does after a signed-in user with a claimed name.
             await page.evaluate(() => {
-                const claimed = { configured: true, signedIn: true, displayName: 'River', email: '', providerLabel: 'Google' };
+                const claimed = {
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'River',
+                    email: '',
+                    emailVerified: true,
+                    provider: 'google.com',
+                    providerLabel: 'Google'
+                };
                 AppAuth.getDisplayName = () => 'River';
                 AppAuth.snapshot = () => claimed;
                 applyAuthSnapshot(claimed);
@@ -574,6 +675,18 @@ async function run() {
             ok('room modal shows display name after auth', room.value === 'River', room.value);
             ok('room display name is not editable', room.tag !== 'INPUT', room.tag);
             ok('room rake toggle present on create', room.rakeToggle);
+            const joinField = await page.evaluate(() => {
+                const el = document.getElementById('joinRoomCode');
+                return {
+                    placeholder: el ? el.placeholder : '',
+                    maxLength: el ? el.maxLength : null
+                };
+            });
+            ok(
+                'join code field is 4-digit',
+                joinField.placeholder === '1234' && joinField.maxLength === 5,
+                JSON.stringify(joinField)
+            );
             const capHint = await page.evaluate(() => {
                 const hints = Array.from(document.querySelectorAll('#roomSoloPanel .room-field-hint')).map((el) => el.textContent);
                 return hints.join(' ');
@@ -631,7 +744,13 @@ async function run() {
 
             await page.evaluate(() => { window.__roomRenames = []; });
             await page.evaluate(() => {
-                applyAuthSnapshot({ configured: true, signedIn: true, displayName: '' });
+                applyAuthSnapshot({
+                    configured: true,
+                    signedIn: true,
+                    displayName: '',
+                    emailVerified: true,
+                    provider: 'google.com'
+                });
             });
             await page.waitForFunction(() => {
                 const panel = document.getElementById('authDisplayNamePanel');
@@ -817,6 +936,111 @@ async function run() {
             }));
             ok('reset returns the clock to 00:00:00 and Start', resetState.time === '00:00:00' && resetState.btn === 'Start' && resetState.resetDisabled, JSON.stringify(resetState));
             await shot(page, 'session-clock-reset.png');
+
+            const headerClock = await page.evaluate(() => {
+                const btn = document.getElementById('actionClockBtn');
+                const theme = document.getElementById('themeToggle');
+                const br = btn ? btn.getBoundingClientRect() : null;
+                const tr = theme ? theme.getBoundingClientRect() : null;
+                return {
+                    present: !!btn,
+                    title: btn ? btn.getAttribute('title') : '',
+                    inHeader: !!(btn && btn.closest('.header-buttons')),
+                    width: br ? Math.round(br.width) : 0,
+                    themeWidth: tr ? Math.round(tr.width) : 0
+                };
+            });
+            ok('action clock button sits in the header cluster', headerClock.present && headerClock.inHeader && /clock/i.test(headerClock.title), JSON.stringify(headerClock));
+            ok(
+                'action clock button matches other header button size',
+                headerClock.width > 0 && Math.abs(headerClock.width - headerClock.themeWidth) <= 2,
+                JSON.stringify(headerClock)
+            );
+            await tap(page, '#actionClockBtn');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && !overlay.hidden;
+            });
+            const clockSetup = await page.evaluate(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                const selected = document.querySelector('.action-clock-preset.is-selected');
+                return {
+                    visible: overlay && !overlay.hidden,
+                    time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                    selected: selected ? selected.getAttribute('data-seconds') : '',
+                    start: (document.getElementById('actionClockStart') || {}).textContent || '',
+                    fullscreen: overlay ? getComputedStyle(overlay).position === 'fixed' : false
+                };
+            });
+            ok(
+                'action clock opens full screen at 60s by default',
+                clockSetup.visible && clockSetup.fullscreen && clockSetup.time === '1:00'
+                    && clockSetup.selected === '60' && /start/i.test(clockSetup.start),
+                JSON.stringify(clockSetup)
+            );
+            await shot(page, 'action-clock-setup.png');
+            await tap(page, '.action-clock-preset[data-seconds="30"]');
+            await page.waitForFunction(() => (document.getElementById('actionClockTime') || {}).textContent === '0:30');
+            await tap(page, '#actionClockStart');
+            await page.waitForFunction(() => {
+                const pause = document.getElementById('actionClockPause');
+                const start = document.getElementById('actionClockStart');
+                return pause && !pause.hidden && start && start.hidden;
+            });
+            await new Promise((resolve) => setTimeout(resolve, 1300));
+            const running = await page.evaluate(() => ({
+                time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                pause: (document.getElementById('actionClockPause') || {}).textContent || ''
+            }));
+            ok(
+                'action clock counts down after start',
+                /^0:2[789]$/.test(running.time) && /pause/i.test(running.pause),
+                JSON.stringify(running)
+            );
+            await tap(page, '#actionClockPause');
+            await page.waitForFunction(() => (document.getElementById('actionClockPause') || {}).textContent === 'Resume');
+            const pausedAction = await page.$eval('#actionClockTime', (el) => el.textContent);
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            const stillPausedAction = await page.$eval('#actionClockTime', (el) => el.textContent);
+            ok('paused action clock does not keep ticking', stillPausedAction === pausedAction, `${pausedAction} -> ${stillPausedAction}`);
+            await tap(page, '#actionClockClose');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && overlay.hidden;
+            });
+            await tap(page, '#actionClockBtn');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && !overlay.hidden;
+            });
+            const remembered = await page.evaluate(() => {
+                const selected = document.querySelector('.action-clock-preset.is-selected');
+                return {
+                    time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                    selected: selected ? selected.getAttribute('data-seconds') : ''
+                };
+            });
+            ok('action clock remembers the last duration', remembered.selected === '30' && remembered.time === '0:30', JSON.stringify(remembered));
+            await tap(page, '#actionClockCustomPreset');
+            await page.waitForFunction(() => {
+                const row = document.getElementById('actionClockCustomRow');
+                return row && !row.hidden;
+            });
+            await page.$eval('#actionClockCustomInput', (el) => { el.value = '15'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+            await page.waitForFunction(() => (document.getElementById('actionClockTime') || {}).textContent === '0:15');
+            const custom = await page.evaluate(() => ({
+                time: (document.getElementById('actionClockTime') || {}).textContent || '',
+                selected: (document.querySelector('.action-clock-preset.is-selected') || {}).getAttribute
+                    ? document.querySelector('.action-clock-preset.is-selected').getAttribute('data-seconds')
+                    : ''
+            }));
+            ok('custom action clock duration is accepted', custom.time === '0:15' && custom.selected === 'custom', JSON.stringify(custom));
+            await shot(page, 'action-clock-custom.png');
+            await tap(page, '#actionClockClose');
+            await page.waitForFunction(() => {
+                const overlay = document.getElementById('actionClockOverlay');
+                return overlay && overlay.hidden;
+            });
 
             await tap(page, '#blindDisplay');
             await page.waitForSelector('#blindModal', { visible: true });

@@ -1826,7 +1826,8 @@ body.compact-mode .account-avatar {
     vertical-align: baseline;
 }
 
-#authForgot {
+#authForgot,
+#authVerifyResend {
     display: block;
     width: 100%;
     text-align: center;
@@ -1887,35 +1888,16 @@ body.auth-pending #authGate {
     justify-content: center;
 }
 
-.btn-auth-google,
-.btn-auth-apple {
+.btn-auth-google {
     background: var(--bg-primary);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
     font-weight: 600;
 }
 
-.btn-auth-google:hover,
-.btn-auth-apple:hover {
+.btn-auth-google:hover {
     border-color: var(--accent-primary);
     color: var(--accent-primary);
-}
-
-.btn-auth-apple {
-    background: #111;
-    color: #fff;
-    border-color: #111;
-}
-
-body:not(.dark-mode) .btn-auth-apple {
-    background: #000;
-    color: #fff;
-}
-
-.btn-auth-apple:hover {
-    background: #222;
-    color: #fff;
-    border-color: #222;
 }
 
 html.auth-pending body > .container,
@@ -1932,5 +1914,179 @@ body.auth-pending .footer {
 
     .auth-card {
         padding: 22px 16px;
+    }
+}
+
+.action-clock-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: calc(28px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
+    background: #111;
+    color: #f4f4f5;
+}
+
+.action-clock-overlay[hidden] {
+    display: none !important;
+}
+
+html.action-clock-open,
+html.action-clock-open body {
+    overflow: hidden;
+}
+
+.action-clock-close {
+    position: absolute;
+    top: calc(12px + env(safe-area-inset-top));
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid #333;
+    background: #1a1a1a;
+    color: #f4f4f5;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.action-clock-close:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.action-clock-kicker {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin: 0;
+}
+
+.action-clock-time {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: min(28vw, 168px);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: #f4f4f5;
+}
+
+.action-clock-overlay.is-warning .action-clock-time {
+    color: #f59e0b;
+}
+
+.action-clock-overlay.is-expired .action-clock-time {
+    color: #ef4444;
+    animation: action-clock-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes action-clock-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+.action-clock-hint {
+    margin: 0;
+    font-size: 15px;
+    opacity: 0.7;
+    text-align: center;
+    min-height: 1.2em;
+}
+
+.action-clock-presets {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    max-width: 420px;
+}
+
+.action-clock-preset {
+    background: #1a1a1a;
+    color: #f4f4f5;
+    border: 1px solid #333;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    min-width: 72px;
+}
+
+.action-clock-preset:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.action-clock-preset.is-selected {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+
+.action-clock-custom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.action-clock-custom[hidden] {
+    display: none !important;
+}
+
+.action-clock-custom label {
+    opacity: 0.7;
+}
+
+.action-clock-custom input {
+    width: 96px;
+    padding: 8px 10px;
+    font-size: 16px;
+    text-align: center;
+    background: #1a1a1a;
+    color: #f4f4f5;
+    border: 1px solid #333;
+    border-radius: 8px;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.action-clock-custom input::-webkit-outer-spin-button,
+.action-clock-custom input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.action-clock-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.action-clock-overlay .btn,
+body.compact-mode .action-clock-overlay .btn {
+    min-width: 120px;
+    padding: 12px 20px;
+    font-size: 16px;
+}
+
+@media (max-width: 640px) {
+    .action-clock-time {
+        font-size: min(26vw, 120px);
+    }
+
+    .action-clock-close {
+        width: 32px;
+        height: 32px;
+        font-size: 22px;
     }
 }

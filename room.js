@@ -1,14 +1,13 @@
 /**
  * Room sync layer: multi-device shared session via Firebase Auth + Firestore.
- * Sign-in is Google / Apple / email (see auth.js). Anonymous auth is not used.
+ * Sign-in is Google / email (see auth.js). Anonymous auth is not used.
  * If Firebase is not configured, create/join is disabled and the app stays local-only.
  */
 (function (global) {
     'use strict';
 
-    const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
-    const CODE_LENGTH = 5;
-    const CODE_ATTEMPTS = 8;
+    const CODE_DIGITS = 4;
+    const CODE_ATTEMPTS = 16;
     const PRESENCE_MS = 20000;
     const STALE_MS = 60000;
     /** How long a kicked player cannot rejoin the same room. */
@@ -82,13 +81,13 @@
     }
 
     function generateCode() {
-        let code = '';
-        const arr = new Uint32Array(CODE_LENGTH);
+        const arr = new Uint32Array(1);
         crypto.getRandomValues(arr);
-        for (let i = 0; i < CODE_LENGTH; i++) {
-            code += CODE_CHARS[arr[i] % CODE_CHARS.length];
-        }
-        return code;
+        return String(arr[0] % 10000).padStart(CODE_DIGITS, '0');
+    }
+
+    function normalizeRoomCode(code) {
+        return String(code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     }
 
     function sharedGameFromLocal(gameState) {
@@ -315,7 +314,12 @@
         db = global.firebase.firestore();
 
         if (!auth.currentUser || auth.currentUser.isAnonymous) {
-            throw new Error('Sign in with Google, Apple, or email first.');
+            throw new Error('Sign in with Google or email first.');
+        }
+        const providers = auth.currentUser.providerData || [];
+        const isGoogle = providers.some((p) => p && p.providerId === 'google.com');
+        if (!isGoogle && !auth.currentUser.emailVerified) {
+            throw new Error('Verify your email first.');
         }
 
         initialized = true;
@@ -670,8 +674,8 @@
         await ensureFirebase();
         if (!initialized) throw new Error('Firebase is not configured. See ROOM_SETUP.md');
 
-        const normalized = (code || '').trim().toUpperCase();
-        if (normalized.length < 4) throw new Error('Enter a valid room code');
+        const normalized = normalizeRoomCode(code);
+        if (normalized.length < CODE_DIGITS) throw new Error('Enter a valid room code');
 
         const name = requireDisplayName(displayName);
         const codeSnap = await db.collection('roomCodes').doc(normalized).get();

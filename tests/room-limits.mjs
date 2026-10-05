@@ -127,7 +127,14 @@ function loadRoom(options = {}) {
             apps: [{}],
             initializeApp() {},
             auth() {
-                return { currentUser: { uid, isAnonymous: false } };
+                return {
+                    currentUser: {
+                        uid,
+                        isAnonymous: false,
+                        emailVerified: options.emailVerified !== false,
+                        providerData: options.providerData || [{ providerId: 'password' }]
+                    }
+                };
             },
             firestore
         },
@@ -181,9 +188,38 @@ function liveRoom(uid, code) {
 
 async function run() {
     {
+        const { RoomSync } = loadRoom({ emailVerified: false });
+        let err = null;
+        try {
+            await RoomSync.createRoom('River', { players: [] });
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'unverified email cannot create a room',
+            !!(err && /verify your email/i.test(String(err.message || ''))),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const { RoomSync, rooms } = loadRoom({
+            emailVerified: false,
+            providerData: [{ providerId: 'google.com' }]
+        });
+        const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
+        ok(
+            'Google can create a room without a password verification step',
+            !!(snap && snap.roomId && rooms[snap.roomId]),
+            JSON.stringify(snap)
+        );
+    }
+
+    {
         const { RoomSync, rooms, users, uid } = loadRoom();
         const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
         ok('create room returns snapshot', !!(snap && snap.roomId && snap.code), JSON.stringify(snap));
+        ok('create room uses a 4-digit code', /^\d{4}$/.test(snap.code), snap.code);
         const created = rooms[snap.roomId];
         ok(
             'create room stores createdBy and expiresAt',
@@ -203,6 +239,22 @@ async function run() {
             'expiry is about one week',
             delta > 6 * 24 * 60 * 60 * 1000 && delta < 8 * 24 * 60 * 60 * 1000,
             String(delta)
+        );
+    }
+
+    {
+        const rooms = { r1: liveRoom('host', '0421') };
+        const { RoomSync } = loadRoom({
+            uid: 'bob',
+            rooms,
+            roomCodes: { '0421': { roomId: 'r1' } },
+            users: { bob: { uid: 'bob', createdRooms: {} } }
+        });
+        const snap = await RoomSync.joinRoom(' 0421 ', 'Bob');
+        ok(
+            'join accepts a 4-digit code',
+            !!(snap && snap.roomId === 'r1' && snap.code === '0421'),
+            JSON.stringify(snap)
         );
     }
 

@@ -46,6 +46,7 @@ let clockTimer = null;
 let editingHouseId = null;
 let roomUiReady = false;
 let appUnlocked = false;
+let verifyPollId = null;
 
 // DOM Elements
 const addPlayerBtn = document.getElementById('addPlayerBtn');
@@ -119,6 +120,326 @@ fontSizeToggle.addEventListener('click', () => {
     saveGameState();
     applyFontSize();
 });
+
+const ACTION_CLOCK_KEY = 'pst_action_clock_seconds';
+const ACTION_CLOCK_PRESETS = [30, 60, 120];
+const ACTION_CLOCK_DEFAULT = 60;
+const ACTION_CLOCK_MIN = 5;
+const ACTION_CLOCK_MAX = 1800;
+
+let actionClock = {
+    open: false,
+    running: false,
+    custom: false,
+    durationMs: ACTION_CLOCK_DEFAULT * 1000,
+    remainingMs: ACTION_CLOCK_DEFAULT * 1000,
+    endsAt: null,
+    tickId: null,
+    expired: false,
+    wakeLock: null
+};
+
+function readActionClockSeconds() {
+    const raw = parseInt(localStorage.getItem(ACTION_CLOCK_KEY), 10);
+    if (!Number.isFinite(raw)) return ACTION_CLOCK_DEFAULT;
+    return Math.min(ACTION_CLOCK_MAX, Math.max(ACTION_CLOCK_MIN, raw));
+}
+
+function writeActionClockSeconds(seconds) {
+    localStorage.setItem(ACTION_CLOCK_KEY, String(seconds));
+}
+
+function formatActionClock(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return m + ':' + String(s).padStart(2, '0');
+}
+
+function selectedActionClockSeconds() {
+    if (actionClock.custom) {
+        const input = document.getElementById('actionClockCustomInput');
+        const raw = parseInt(input && input.value, 10);
+        if (!Number.isFinite(raw)) return null;
+        if (raw < ACTION_CLOCK_MIN || raw > ACTION_CLOCK_MAX) return null;
+        return raw;
+    }
+    return Math.round(actionClock.durationMs / 1000);
+}
+
+function stopActionClockTicker() {
+    if (actionClock.tickId) {
+        clearInterval(actionClock.tickId);
+        actionClock.tickId = null;
+    }
+}
+
+function releaseActionClockWakeLock() {
+    if (actionClock.wakeLock) {
+        actionClock.wakeLock.release().catch(() => {});
+        actionClock.wakeLock = null;
+    }
+}
+
+async function requestActionClockWakeLock() {
+    releaseActionClockWakeLock();
+    try {
+        if (navigator.wakeLock && typeof navigator.wakeLock.request === 'function') {
+            actionClock.wakeLock = await navigator.wakeLock.request('screen');
+        }
+    } catch (e) {
+        actionClock.wakeLock = null;
+    }
+}
+
+function beepActionClock() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.14, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.55);
+        osc.onended = () => ctx.close().catch(() => {});
+    } catch (e) { /* ignore */ }
+    if (navigator.vibrate) navigator.vibrate([180, 70, 180]);
+}
+
+function updateActionClockUI() {
+    const overlay = document.getElementById('actionClockOverlay');
+    const timeEl = document.getElementById('actionClockTime');
+    const hint = document.getElementById('actionClockHint');
+    const startBtn = document.getElementById('actionClockStart');
+    const pauseBtn = document.getElementById('actionClockPause');
+    const customRow = document.getElementById('actionClockCustomRow');
+    if (!overlay) return;
+
+    const remaining = actionClock.running && actionClock.endsAt
+        ? Math.max(0, actionClock.endsAt - Date.now())
+        : actionClock.remainingMs;
+    if (timeEl) timeEl.textContent = formatActionClock(remaining);
+
+    overlay.classList.toggle('is-warning', !actionClock.expired && remaining > 0 && remaining <= 10000);
+    overlay.classList.toggle('is-expired', !!actionClock.expired);
+
+    if (customRow) customRow.hidden = !actionClock.custom;
+    document.querySelectorAll('.action-clock-preset').forEach((btn) => {
+        const value = btn.getAttribute('data-seconds');
+        const selected = actionClock.custom ? value === 'custom' : String(Math.round(actionClock.durationMs / 1000)) === value;
+        btn.classList.toggle('is-selected', selected);
+    });
+
+    if (actionClock.expired) {
+        if (hint) hint.textContent = 'Time.';
+        if (startBtn) {
+            startBtn.hidden = false;
+            startBtn.textContent = 'Restart';
+        }
+        if (pauseBtn) pauseBtn.hidden = true;
+        return;
+    }
+    if (actionClock.running) {
+        if (hint) hint.textContent = remaining <= 10000 ? 'Last 10 seconds.' : 'Time to act.';
+        if (startBtn) startBtn.hidden = true;
+        if (pauseBtn) {
+            pauseBtn.hidden = false;
+            pauseBtn.textContent = 'Pause';
+        }
+        return;
+    }
+    if (actionClock.remainingMs > 0 && actionClock.remainingMs < actionClock.durationMs) {
+        if (hint) hint.textContent = 'Paused.';
+        if (startBtn) startBtn.hidden = true;
+        if (pauseBtn) {
+            pauseBtn.hidden = false;
+            pauseBtn.textContent = 'Resume';
+        }
+        return;
+    }
+    if (hint) hint.textContent = 'Pick a time, then start.';
+    if (startBtn) {
+        startBtn.hidden = false;
+        startBtn.textContent = 'Start';
+    }
+    if (pauseBtn) pauseBtn.hidden = true;
+}
+
+function expireActionClock() {
+    stopActionClockTicker();
+    actionClock.running = false;
+    actionClock.endsAt = null;
+    actionClock.remainingMs = 0;
+    actionClock.expired = true;
+    releaseActionClockWakeLock();
+    updateActionClockUI();
+    beepActionClock();
+}
+
+function tickActionClock() {
+    if (!actionClock.running || !actionClock.endsAt) return;
+    const remaining = actionClock.endsAt - Date.now();
+    actionClock.remainingMs = Math.max(0, remaining);
+    if (remaining <= 0) {
+        expireActionClock();
+        return;
+    }
+    updateActionClockUI();
+}
+
+function startActionClockTicker() {
+    stopActionClockTicker();
+    actionClock.tickId = setInterval(tickActionClock, 100);
+    tickActionClock();
+}
+
+function applyActionClockDuration(seconds, fromCustom) {
+    const next = Math.min(ACTION_CLOCK_MAX, Math.max(ACTION_CLOCK_MIN, seconds));
+    actionClock.custom = !!fromCustom;
+    actionClock.durationMs = next * 1000;
+    actionClock.remainingMs = actionClock.durationMs;
+    actionClock.endsAt = null;
+    actionClock.running = false;
+    actionClock.expired = false;
+    writeActionClockSeconds(next);
+    stopActionClockTicker();
+    updateActionClockUI();
+}
+
+function startActionClock() {
+    const seconds = selectedActionClockSeconds();
+    if (seconds == null) {
+        const hint = document.getElementById('actionClockHint');
+        if (hint) hint.textContent = 'Enter a time between 5 and 1800 seconds.';
+        return;
+    }
+    applyActionClockDuration(seconds, actionClock.custom);
+    actionClock.running = true;
+    actionClock.expired = false;
+    actionClock.remainingMs = actionClock.durationMs;
+    actionClock.endsAt = Date.now() + actionClock.durationMs;
+    requestActionClockWakeLock();
+    startActionClockTicker();
+    updateActionClockUI();
+}
+
+function pauseActionClock() {
+    if (!actionClock.running) return;
+    const remaining = Math.max(0, actionClock.endsAt - Date.now());
+    actionClock.running = false;
+    actionClock.endsAt = null;
+    actionClock.remainingMs = remaining;
+    stopActionClockTicker();
+    releaseActionClockWakeLock();
+    updateActionClockUI();
+}
+
+function resumeActionClock() {
+    if (actionClock.running || actionClock.remainingMs <= 0) return;
+    actionClock.running = true;
+    actionClock.expired = false;
+    actionClock.endsAt = Date.now() + actionClock.remainingMs;
+    requestActionClockWakeLock();
+    startActionClockTicker();
+    updateActionClockUI();
+}
+
+function openActionClock() {
+    const overlay = document.getElementById('actionClockOverlay');
+    if (!overlay) return;
+    const saved = readActionClockSeconds();
+    actionClock.open = true;
+    actionClock.running = false;
+    actionClock.expired = false;
+    actionClock.custom = ACTION_CLOCK_PRESETS.indexOf(saved) === -1;
+    actionClock.durationMs = saved * 1000;
+    actionClock.remainingMs = actionClock.durationMs;
+    actionClock.endsAt = null;
+    overlay.hidden = false;
+    document.documentElement.classList.add('action-clock-open');
+    const customInput = document.getElementById('actionClockCustomInput');
+    if (customInput && actionClock.custom) customInput.value = String(saved);
+    updateActionClockUI();
+}
+
+function closeActionClock() {
+    const overlay = document.getElementById('actionClockOverlay');
+    stopActionClockTicker();
+    releaseActionClockWakeLock();
+    actionClock.open = false;
+    actionClock.running = false;
+    actionClock.endsAt = null;
+    actionClock.expired = false;
+    if (overlay) overlay.hidden = true;
+    document.documentElement.classList.remove('action-clock-open');
+}
+
+function initActionClock() {
+    const btn = document.getElementById('actionClockBtn');
+    const overlay = document.getElementById('actionClockOverlay');
+    const closeBtn = document.getElementById('actionClockClose');
+    const startBtn = document.getElementById('actionClockStart');
+    const pauseBtn = document.getElementById('actionClockPause');
+    const customInput = document.getElementById('actionClockCustomInput');
+    if (!btn || !overlay) return;
+
+    btn.addEventListener('click', () => {
+        if (actionClock.open) closeActionClock();
+        else openActionClock();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', () => closeActionClock());
+    if (startBtn) startBtn.addEventListener('click', () => startActionClock());
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            if (actionClock.running) pauseActionClock();
+            else resumeActionClock();
+        });
+    }
+    document.querySelectorAll('.action-clock-preset').forEach((preset) => {
+        preset.addEventListener('click', () => {
+            const value = preset.getAttribute('data-seconds');
+            if (value === 'custom') {
+                actionClock.custom = true;
+                const input = document.getElementById('actionClockCustomInput');
+                const current = selectedActionClockSeconds() || readActionClockSeconds();
+                if (input) input.value = String(current);
+                applyActionClockDuration(parseInt(input && input.value, 10) || ACTION_CLOCK_DEFAULT, true);
+                if (input) input.focus();
+                return;
+            }
+            applyActionClockDuration(parseInt(value, 10), false);
+        });
+    });
+    if (customInput) {
+        customInput.addEventListener('input', () => {
+            if (!actionClock.custom) return;
+            const seconds = parseInt(customInput.value, 10);
+            if (!Number.isFinite(seconds)) return;
+            if (seconds < ACTION_CLOCK_MIN || seconds > ACTION_CLOCK_MAX) return;
+            applyActionClockDuration(seconds, true);
+        });
+        customInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                startActionClock();
+            }
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && actionClock.open) {
+            e.preventDefault();
+            closeActionClock();
+        }
+    });
+}
+
+initActionClock();
 
 clearStatsBtn.addEventListener('click', () => {
     if (!assertCanEdit()) return;
@@ -1826,25 +2147,57 @@ function writeAuthInput(id, value) {
     if (el) el.value = value;
 }
 
+function stopVerifyPoll() {
+    if (verifyPollId) {
+        clearInterval(verifyPollId);
+        verifyPollId = null;
+    }
+}
+
+function startVerifyPoll() {
+    if (verifyPollId || !window.AppAuth || typeof AppAuth.refreshEmailVerification !== 'function') return;
+    verifyPollId = setInterval(() => {
+        const current = AppAuth.snapshot();
+        if (!current.signedIn) return;
+        AppAuth.refreshEmailVerification()
+            .then((snap) => applyAuthSnapshot(snap))
+            .catch(() => {});
+    }, 4000);
+}
+
+function needsEmailVerification(snap) {
+    if (!snap || !snap.signedIn) return false;
+    if (snap.provider === 'google.com') return false;
+    return snap.emailVerified !== true;
+}
+
 function showAuthPanel(which) {
     const signIn = document.getElementById('authSignInPanel');
     const create = document.getElementById('authCreatePanel');
+    const verify = document.getElementById('authVerifyPanel');
     const namePanel = document.getElementById('authDisplayNamePanel');
     if (signIn) signIn.hidden = which !== 'signin';
     if (create) create.hidden = which !== 'create';
+    if (verify) verify.hidden = which !== 'verify';
     if (namePanel) namePanel.hidden = which !== 'name';
     const lead = document.getElementById('authGateLead');
     if (lead) {
         lead.hidden = which !== 'signin';
     }
+    if (which === 'verify') startVerifyPoll();
+    else stopVerifyPoll();
     const err = document.getElementById('authError');
-    const panel = which === 'create' ? create : which === 'name' ? namePanel : signIn;
+    const panel = which === 'create' ? create
+        : which === 'verify' ? verify
+        : which === 'name' ? namePanel
+        : signIn;
     const sw = panel && panel.querySelector('.auth-switch');
     if (err && sw) sw.parentNode.insertBefore(err, sw);
     else if (err && panel) panel.appendChild(err);
 }
 
 function lockAppForAuth() {
+    stopVerifyPoll();
     const create = document.getElementById('authCreatePanel');
     const preserveCreate = !!(create && !create.hidden && !appUnlocked);
     appUnlocked = false;
@@ -1880,6 +2233,7 @@ function restoreJoinedRoom() {
 }
 
 function unlockApp() {
+    stopVerifyPoll();
     document.documentElement.classList.remove('auth-pending');
     document.body.classList.remove('auth-pending');
     updateAccountChip();
@@ -1898,6 +2252,18 @@ function applyAuthSnapshot(snap) {
     }
     if (!snap.signedIn) {
         lockAppForAuth();
+        return;
+    }
+    if (needsEmailVerification(snap)) {
+        document.documentElement.classList.add('auth-pending');
+        document.body.classList.add('auth-pending');
+        showAuthPanel('verify');
+        const verifyLead = document.getElementById('authVerifyLead');
+        if (verifyLead) {
+            verifyLead.textContent = snap.email
+                ? `We sent a verification link to ${snap.email}. Open it, then continue.`
+                : 'We sent a verification link to your email. Open it, then continue.';
+        }
         return;
     }
     if (!snap.displayName) {
@@ -1931,12 +2297,14 @@ async function handleAuthAction(fn, btn) {
 
 function initAuthUi() {
     const googleBtn = document.getElementById('authGoogleBtn');
-    const appleBtn = document.getElementById('authAppleBtn');
     const emailForm = document.getElementById('authEmailForm');
     const createLink = document.getElementById('authEmailCreate');
     const createForm = document.getElementById('authCreateForm');
     const showSignIn = document.getElementById('authShowSignIn');
     const forgotBtn = document.getElementById('authForgot');
+    const verifyContinue = document.getElementById('authVerifyContinue');
+    const verifyResend = document.getElementById('authVerifyResend');
+    const verifySignOut = document.getElementById('authVerifySignOut');
     const nameForm = document.getElementById('authDisplayNameForm');
     const nameSignOut = document.getElementById('authNameSignOut');
     const accountBtn = document.getElementById('accountBtn');
@@ -1945,9 +2313,6 @@ function initAuthUi() {
 
     if (googleBtn) {
         googleBtn.addEventListener('click', () => handleAuthAction(() => AppAuth.signInGoogle(), googleBtn));
-    }
-    if (appleBtn) {
-        appleBtn.addEventListener('click', () => handleAuthAction(() => AppAuth.signInApple(), appleBtn));
     }
     if (emailForm) {
         emailForm.addEventListener('submit', (e) => {
@@ -2005,6 +2370,39 @@ function initAuthUi() {
             } catch (e) {
                 setAuthError((e && e.message) || 'Could not send reset email');
             }
+        });
+    }
+    if (verifyContinue) {
+        verifyContinue.addEventListener('click', () => {
+            handleAuthAction(async () => {
+                const snap = await AppAuth.refreshEmailVerification();
+                if (needsEmailVerification(snap)) {
+                    throw new Error('Check your email and open the verification link first.');
+                }
+                return snap;
+            }, verifyContinue);
+        });
+    }
+    if (verifyResend) {
+        verifyResend.addEventListener('click', async () => {
+            setAuthError('');
+            verifyResend.disabled = true;
+            try {
+                await AppAuth.sendEmailVerification();
+                setAuthError('Verification email sent.');
+            } catch (e) {
+                setAuthError((e && e.message) || 'Could not send verification email');
+            } finally {
+                verifyResend.disabled = false;
+            }
+        });
+    }
+    if (verifySignOut) {
+        verifySignOut.addEventListener('click', async () => {
+            setAuthError('');
+            stopVerifyPoll();
+            if (window.AppAuth) await AppAuth.signOut();
+            applyAuthSnapshot(window.AppAuth ? AppAuth.snapshot() : { configured: false });
         });
     }
     if (nameForm) {
@@ -2100,7 +2498,7 @@ async function bootApp() {
     }
 
     lockAppForAuth();
-    const providerBtns = ['authGoogleBtn', 'authAppleBtn', 'authEmailSignIn', 'authCreateSubmit']
+    const providerBtns = ['authGoogleBtn', 'authEmailSignIn', 'authCreateSubmit']
         .map((id) => document.getElementById(id))
         .filter(Boolean);
     providerBtns.forEach((btn) => { btn.disabled = true; });
@@ -2268,7 +2666,7 @@ function initRoomUI() {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam && joinCodeInput) {
-        joinCodeInput.value = roomParam.toUpperCase();
+        joinCodeInput.value = roomParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
     }
 
     if (!window.RoomSync) {

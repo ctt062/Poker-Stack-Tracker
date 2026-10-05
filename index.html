@@ -52,6 +52,12 @@
                     <span class="account-avatar" id="accountAvatar" aria-hidden="true">?</span>
                     <span class="account-chip-name" id="accountChipName">Sign in</span>
                 </button>
+                <button type="button" id="actionClockBtn" class="btn btn-theme" title="Clock" aria-label="Action clock">
+                    <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="8"></circle>
+                        <polyline points="12 8 12 12 15 14"></polyline>
+                    </svg>
+                </button>
                 <button id="themeToggle" class="btn btn-theme" title="Toggle Theme">
                     <svg class="theme-icon sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="5"></circle>
@@ -387,7 +393,7 @@
                 </div>
                 <div class="room-divider">or join existing</div>
                 <div class="form-group room-join-row">
-                    <input type="text" id="joinRoomCode" placeholder="Room code" maxlength="8" autocomplete="off" class="room-code-input">
+                    <input type="text" id="joinRoomCode" placeholder="1234" maxlength="5" inputmode="numeric" autocomplete="off" class="room-code-input" aria-label="Room code">
                     <button type="button" id="joinRoomBtn" class="btn btn-primary">Join</button>
                 </div>
             </div>
@@ -419,7 +425,7 @@
         </div>
     </div>
 
-    <!-- Auth gate: Google / Apple / email before using the app when Firebase is configured -->
+    <!-- Auth gate: Google / email before using the app when Firebase is configured -->
     <div id="authGate" class="auth-gate">
         <div class="auth-card">
             <h1>Poker Stack Tracker</h1>
@@ -427,7 +433,6 @@
 
             <div id="authSignInPanel">
                 <button type="button" id="authGoogleBtn" class="btn btn-auth btn-auth-google">Continue with Google</button>
-                <button type="button" id="authAppleBtn" class="btn btn-auth btn-auth-apple">Continue with Apple</button>
                 <div class="room-divider">or email</div>
                 <form id="authEmailForm">
                     <div class="form-group">
@@ -446,7 +451,7 @@
 
             <div id="authCreatePanel" hidden>
                 <h2>Create account</h2>
-                <p class="auth-lead">Email, password, and a unique display name. This is how you appear in rooms.</p>
+                <p class="auth-lead">Email, password, and a unique display name. We will send a verification link before you can use the tracker.</p>
                 <form id="authCreateForm">
                     <div class="form-group">
                         <label for="authCreateEmail">Email</label>
@@ -468,6 +473,14 @@
                     <button type="submit" class="btn btn-primary btn-auth" id="authCreateSubmit">Create account</button>
                 </form>
                 <p class="auth-switch">Already have an account? <button type="button" class="btn btn-link" id="authShowSignIn">Sign in</button></p>
+            </div>
+
+            <div id="authVerifyPanel" hidden>
+                <h2>Verify your email</h2>
+                <p id="authVerifyLead" class="auth-lead">We sent a verification link to your email. Open it, then continue.</p>
+                <button type="button" class="btn btn-primary btn-auth" id="authVerifyContinue">I've verified</button>
+                <button type="button" class="btn btn-link" id="authVerifyResend">Resend email</button>
+                <p class="auth-switch">Wrong account? <button type="button" class="btn btn-link" id="authVerifySignOut">Use a different account</button></p>
             </div>
 
             <div id="authDisplayNamePanel" hidden>
@@ -504,6 +517,27 @@
                     <button type="button" id="signOutBtn" class="btn btn-danger">Sign out</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div id="actionClockOverlay" class="action-clock-overlay" hidden>
+        <button type="button" id="actionClockClose" class="action-clock-close" title="Close clock" aria-label="Close clock">&times;</button>
+        <p class="action-clock-kicker">Clock</p>
+        <div id="actionClockTime" class="action-clock-time">1:00</div>
+        <p id="actionClockHint" class="action-clock-hint">Pick a time, then start.</p>
+        <div class="action-clock-presets" role="group" aria-label="Clock length">
+            <button type="button" class="action-clock-preset" data-seconds="30">30s</button>
+            <button type="button" class="action-clock-preset is-selected" data-seconds="60">60s</button>
+            <button type="button" class="action-clock-preset" data-seconds="120">120s</button>
+            <button type="button" class="action-clock-preset" data-seconds="custom" id="actionClockCustomPreset">Custom</button>
+        </div>
+        <div id="actionClockCustomRow" class="action-clock-custom" hidden>
+            <label for="actionClockCustomInput">Seconds</label>
+            <input type="number" id="actionClockCustomInput" min="5" max="1800" step="1" value="90" inputmode="numeric">
+        </div>
+        <div class="action-clock-actions">
+            <button type="button" class="btn btn-primary" id="actionClockStart">Start</button>
+            <button type="button" class="btn btn-secondary" id="actionClockPause" hidden>Pause</button>
         </div>
     </div>
 
