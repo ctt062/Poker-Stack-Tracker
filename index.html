@@ -135,10 +135,11 @@
                 <thead>
                     <tr>
                         <th>Player Name</th>
-                        <th>Total Buy-in</th>
+                        <th><span class="col-full">Total </span>Buy-in</th>
                         <th>Stack Control</th>
                         <th>Cash Out</th>
                         <th>P&L</th>
+                        <th class="settle-col">Paid</th>
                     </tr>
                 </thead>
                 <tbody id="playerTableBody">
@@ -150,15 +151,22 @@
             <h3>Total Cash Balance: <span id="totalBalance">$0.00</span></h3>
             <div class="balance-breakdown" id="balanceBreakdown"></div>
             <p id="rakeHint" class="rake-hint" hidden></p>
+            <div class="balance-actions">
+                <button type="button" id="chopLeftoverBtn" class="btn btn-secondary" hidden title="Split leftover among winners by their P&amp;L share">Chop leftover among winners</button>
+            </div>
         </div>
 
         <div id="settlementSection" class="settlement-section" hidden>
-            <h3>Settlement</h3>
-            <p class="settlement-hint">Who pays whom so the books close. House rows are creditors (they only receive).</p>
+            <div class="settlement-head">
+                <h3>Settlement</h3>
+                <button type="button" id="copySettlementBtn" class="btn btn-secondary btn-small" title="Copy results for WhatsApp">Copy</button>
+            </div>
+            <p class="settlement-hint">Who pays whom so the books close. House rows are creditors (they only receive). Tick Paid when the cash has changed hands.</p>
             <ul id="settlementList" class="settlement-list"></ul>
         </div>
 
         <div class="action-buttons">
+            <button type="button" id="copyResultsBtn" class="btn btn-secondary" title="Copy results for WhatsApp">Copy</button>
             <button id="exportBtn" class="btn btn-success">Export to Excel</button>
             <button id="clearStatsBtn" class="btn btn-danger">Clear Stats</button>
         </div>

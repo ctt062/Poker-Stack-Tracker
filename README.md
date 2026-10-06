@@ -15,7 +15,7 @@ A minimalist web application for tracking chip stacks during poker games.
 - **Cash Out Tracking**: Record cash-out amounts for each player
 - **P&L Calculation**: Automatic profit and loss calculation per player
 - **Balance Overview**: Buy-ins, player cash-outs, house take, and leftover
-- **Settlement**: Who pays whom after cash-out, including Dealer and Host
+- **Settlement**: Who pays whom after cash-out, including Dealer and Host. Tick Paid when cash has changed hands. Copy the results for WhatsApp. Chop leftover among winners by P&L share so the books close
 - **Session clock**: Start, pause (becomes Resume), and reset elapsed time (used for time-rake hints)
 - **Action clock**: Header clock button opens a full-screen countdown (30s, 60s, 120s, or custom; default 60s) when a player is on the clock
 - **Data Persistence**: Automatically saves game state to browser localStorage

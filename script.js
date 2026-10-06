@@ -31,8 +31,8 @@ let gameState = {
         note: ''
     },
     house: [
-        { id: HOUSE_DEALER_ID, kind: 'dealer', name: 'Dealer', cashOut: 0 },
-        { id: HOUSE_HOST_ID, kind: 'host', name: 'Host', cashOut: 0 }
+        { id: HOUSE_DEALER_ID, kind: 'dealer', name: 'Dealer', cashOut: 0, settled: false },
+        { id: HOUSE_HOST_ID, kind: 'host', name: 'Host', cashOut: 0, settled: false }
     ],
     clock: {
         running: false,
@@ -448,7 +448,7 @@ clearStatsBtn.addEventListener('click', () => {
         gameState.sessionName = 'Session Name';
         gameState.bankerName = 'Banker';
         ensureHouseState();
-        gameState.house.forEach((row) => { row.cashOut = 0; });
+        gameState.house.forEach((row) => { row.cashOut = 0; row.settled = false; });
         pauseClock(true);
         gameState.clock = defaultClock();
         undoStack = [];
@@ -460,6 +460,19 @@ clearStatsBtn.addEventListener('click', () => {
 exportBtn.addEventListener('click', () => {
     exportToExcel();
 });
+
+const copyResultsBtn = document.getElementById('copyResultsBtn');
+if (copyResultsBtn) {
+    copyResultsBtn.addEventListener('click', () => copyResultsToClipboard(copyResultsBtn));
+}
+const copySettlementBtn = document.getElementById('copySettlementBtn');
+if (copySettlementBtn) {
+    copySettlementBtn.addEventListener('click', () => copyResultsToClipboard(copySettlementBtn));
+}
+const chopLeftoverBtn = document.getElementById('chopLeftoverBtn');
+if (chopLeftoverBtn) {
+    chopLeftoverBtn.addEventListener('click', () => chopLeftoverAmongWinners());
+}
 
 blindForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -670,8 +683,8 @@ function defaultRake() {
 
 function defaultHouse() {
     return [
-        { id: HOUSE_DEALER_ID, kind: 'dealer', name: 'Dealer', cashOut: 0 },
-        { id: HOUSE_HOST_ID, kind: 'host', name: 'Host', cashOut: 0 }
+        { id: HOUSE_DEALER_ID, kind: 'dealer', name: 'Dealer', cashOut: 0, settled: false },
+        { id: HOUSE_HOST_ID, kind: 'host', name: 'Host', cashOut: 0, settled: false }
     ];
 }
 
@@ -705,7 +718,8 @@ function normalizeHouse(raw) {
             id: def.id,
             kind: def.kind,
             name,
-            cashOut: Math.max(0, money(found && found.cashOut))
+            cashOut: Math.max(0, money(found && found.cashOut)),
+            settled: !!(found && found.settled)
         };
     });
 }
@@ -726,6 +740,11 @@ function ensureHouseState() {
     gameState.rake = normalizeRake(gameState.rake);
     gameState.house = normalizeHouse(gameState.house);
     gameState.clock = normalizeClock(gameState.clock);
+    seatedPlayers().forEach((p) => {
+        p.settled = p.settled === true;
+        p.cashOut = Math.max(0, money(p.cashOut));
+        p.totalBuyIn = Math.max(0, money(p.totalBuyIn));
+    });
 }
 
 function seatedPlayers() {
@@ -1071,7 +1090,8 @@ function addPlayer(name, buyIn) {
         id: Date.now(),
         name: name,
         totalBuyIn: buyIn,
-        cashOut: 0
+        cashOut: 0,
+        settled: false
     };
 
     gameState.players.push(player);
@@ -1278,6 +1298,177 @@ function calculateSettlement() {
     return transfers;
 }
 
+function winningPlayers() {
+    return seatedPlayers().filter((p) => calculatePnL(p) > 0.005);
+}
+
+function chopLeftoverAmongWinners() {
+    if (!assertCanEdit()) return;
+    ensureHouseState();
+    const leftover = cashTotals().balance;
+    if (Math.abs(leftover) < 0.005) {
+        alert('Books already balance.');
+        return;
+    }
+    const winners = winningPlayers();
+    if (!winners.length) {
+        alert('Need at least one player with a profit to chop leftover among.');
+        return;
+    }
+    const totalWin = money(winners.reduce((sum, p) => sum + calculatePnL(p), 0));
+    if (totalWin < 0.005) {
+        alert('Need at least one player with a profit to chop leftover among.');
+        return;
+    }
+    const leftoverCents = Math.round(leftover * 100);
+    const label = leftover > 0 ? 'over' : 'unaccounted';
+    const who = winners.length === 1 ? '1 winner' : `${winners.length} winners`;
+    if (!confirm(`Chop ${formatMoney(Math.abs(leftover))} ${label} among ${who} by P&L share? Their cash-outs will change so the books close.`)) {
+        return;
+    }
+    const parts = winners.map((p) => {
+        const exact = leftoverCents * (calculatePnL(p) / totalWin);
+        const base = exact < 0 ? Math.ceil(exact) : Math.floor(exact);
+        return { p, frac: Math.abs(exact - base), add: base };
+    });
+    let remain = leftoverCents - parts.reduce((sum, x) => sum + x.add, 0);
+    parts.sort((a, b) => b.frac - a.frac);
+    const dir = remain > 0 ? 1 : -1;
+    let i = 0;
+    while (remain !== 0 && parts.length) {
+        parts[i % parts.length].add += dir;
+        remain -= dir;
+        i += 1;
+        if (i > 100000) break;
+    }
+    parts.forEach((x) => {
+        x.p.cashOut = money(Math.max(0, x.p.cashOut - x.add / 100));
+    });
+    saveGameState();
+    updateDisplay();
+}
+
+function formatResultsForWhatsApp() {
+    ensureHouseState();
+    const session = gameState.sessionName !== 'Session Name' ? gameState.sessionName : 'Poker session';
+    const lines = [`*${session}*`];
+    const blinds = gameState.blindStructure || { small: 0, big: 0 };
+    if (blinds.small || blinds.big) {
+        lines.push(`Blinds $${Number(blinds.small).toFixed(2)} / $${Number(blinds.big).toFixed(2)}`);
+    }
+    const elapsed = formatElapsed(getElapsedMs());
+    if (elapsed !== '00:00:00') lines.push(`Elapsed ${elapsed}`);
+    lines.push(`Rake: ${formatRakeLabel(gameState.rake)}`);
+    if (gameState.bankerName && gameState.bankerName !== 'Banker') {
+        lines.push(`Banker: ${gameState.bankerName}`);
+    }
+    lines.push('');
+    lines.push('*Results*');
+    seatedPlayers().forEach((p) => {
+        const mark = p.settled ? '  ✓' : '';
+        lines.push(`${p.name}  in ${formatMoney(p.totalBuyIn)}  out ${formatMoney(p.cashOut)}  ${formatMoney(calculatePnL(p), true)}${mark}`);
+    });
+    gameState.house.forEach((h) => {
+        if (money(h.cashOut) < 0.005 && !h.settled) return;
+        const mark = h.settled ? '  ✓' : '';
+        lines.push(`${h.name}  ${formatMoney(h.cashOut, true)}${mark}`);
+    });
+    const totals = cashTotals();
+    lines.push('');
+    lines.push('*Totals*');
+    lines.push(`Buy-ins ${formatMoney(totals.buyIn)}`);
+    lines.push(`Cash-outs ${formatMoney(totals.cashOut)}`);
+    const leftoverLabel = totals.balance > 0.005 ? 'Over' : totals.balance < -0.005 ? 'Unaccounted' : 'Balance';
+    lines.push(`${leftoverLabel} ${formatMoney(totals.balance, true)}`);
+    const transfers = calculateSettlement();
+    if (transfers.length) {
+        lines.push('');
+        lines.push('*Settlement*');
+        transfers.forEach((t) => {
+            lines.push(`${t.from} pays ${t.to}  ${formatMoney(t.amount)}`);
+        });
+    }
+    return lines.join('\n');
+}
+
+async function copyResultsToClipboard(button) {
+    const text = formatResultsForWhatsApp();
+    let copied = false;
+    try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+    } catch (e) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            copied = document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch (err) {
+            copied = false;
+        }
+    }
+    if (!copied) {
+        alert('Could not copy. Long-press and copy the text instead.');
+        return;
+    }
+    if (button) {
+        const prev = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+            if (button.textContent === 'Copied') button.textContent = prev;
+        }, 1500);
+    }
+}
+
+function togglePlayerSettled(playerId) {
+    if (!assertCanEdit()) return;
+    const player = seatedPlayers().find((p) => p.id === playerId);
+    if (!player) return;
+    player.settled = !player.settled;
+    saveGameState();
+    updateDisplay();
+}
+
+function toggleHouseSettled(houseId) {
+    if (!assertCanEdit()) return;
+    ensureHouseState();
+    const row = gameState.house.find((h) => h.id === houseId);
+    if (!row) return;
+    row.settled = !row.settled;
+    saveGameState();
+    updateDisplay();
+}
+
+function buildSettleToggle(settled, onToggle, editable, label) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'settle-toggle';
+    btn.setAttribute('aria-pressed', settled ? 'true' : 'false');
+    const status = settled ? 'Settled' : 'Not settled';
+    btn.title = `${status}. Tap to toggle.`;
+    btn.setAttribute('aria-label', `${label}: ${status}`);
+    btn.disabled = !editable;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '3');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    poly.setAttribute('points', '20 6 9 17 4 12');
+    svg.appendChild(poly);
+    btn.appendChild(svg);
+    btn.addEventListener('click', onToggle);
+    return btn;
+}
+
 function updateBlindDisplay() {
     if (gameState.blindStructure.small > 0 || gameState.blindStructure.big > 0) {
         blindDisplay.textContent = `$${gameState.blindStructure.small.toFixed(2)} / $${gameState.blindStructure.big.toFixed(2)}`;
@@ -1309,7 +1500,7 @@ function updateDisplay() {
         const empty = document.createElement('tr');
         empty.className = 'empty-players-row';
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.textContent = 'No players yet. Add someone to start tracking buy-ins.';
         empty.appendChild(td);
         playerTableBody.appendChild(empty);
@@ -1328,9 +1519,21 @@ function updateDisplay() {
     totalBalanceDisplay.style.color = totals.balance > 0 ? '#2ecc71' : totals.balance < 0 ? '#e74c3c' : '#3498db';
     renderBalanceBreakdown(totals);
     updateRakeHint();
+    renderChopLeftoverButton(totals);
     renderSettlement();
     updateUndoBtn();
     applyEditabilityUI();
+}
+
+function renderChopLeftoverButton(totals) {
+    const btn = document.getElementById('chopLeftoverBtn');
+    if (!btn) return;
+    const leftover = totals.balance;
+    const canChop = canEditGame() && Math.abs(leftover) >= 0.005 && winningPlayers().length > 0;
+    btn.hidden = !canChop;
+    if (!canChop) return;
+    const label = leftover > 0 ? 'over' : 'unaccounted';
+    btn.textContent = `Chop leftover (${formatMoney(Math.abs(leftover))} ${label}) among winners`;
 }
 
 function renderBalanceBreakdown(totals) {
@@ -1454,11 +1657,17 @@ function buildPlayerRow(player, editable) {
     pnlCell.className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-zero';
     pnlCell.textContent = formatMoney(pnl, true);
 
+    const settleCell = document.createElement('td');
+    settleCell.className = 'settle-col';
+    settleCell.appendChild(buildSettleToggle(!!player.settled, () => togglePlayerSettled(player.id), editable, player.name));
+    if (player.settled) row.classList.add('is-settled');
+
     row.appendChild(nameCell);
     row.appendChild(buyInCell);
     row.appendChild(stackCell);
     row.appendChild(cashOutCell);
     row.appendChild(pnlCell);
+    row.appendChild(settleCell);
     return row;
 }
 
@@ -1513,11 +1722,17 @@ function buildHouseRow(house, editable) {
     pnlCell.className = pnl > 0 ? 'pnl-positive' : 'pnl-zero';
     pnlCell.textContent = formatMoney(pnl, true);
 
+    const settleCell = document.createElement('td');
+    settleCell.className = 'settle-col';
+    settleCell.appendChild(buildSettleToggle(!!house.settled, () => toggleHouseSettled(house.id), editable, house.name));
+    if (house.settled) row.classList.add('is-settled');
+
     row.appendChild(nameCell);
     row.appendChild(buyInCell);
     row.appendChild(stackCell);
     row.appendChild(cashOutCell);
     row.appendChild(pnlCell);
+    row.appendChild(settleCell);
     return row;
 }
 
@@ -1534,6 +1749,8 @@ function applyEditabilityUI() {
         clockResetBtn.disabled = !editable || (!gameState.clock.running && elapsed === 0);
     }
     updateUndoBtn();
+    const chopBtn = document.getElementById('chopLeftoverBtn');
+    if (chopBtn) chopBtn.disabled = !editable;
     document.body.classList.toggle('room-view-only', !editable && !!(window.RoomSync && RoomSync.isInRoom()));
 }
 
@@ -1576,7 +1793,8 @@ function normalizeRemoteGame(remoteGame) {
             id: toNumber(p && p.id, index),
             name: String((p && p.name) || 'Player'),
             totalBuyIn: toNumber(p && p.totalBuyIn, 0),
-            cashOut: toNumber(p && p.cashOut, 0)
+            cashOut: toNumber(p && p.cashOut, 0),
+            settled: !!(p && p.settled)
         }));
     }
     if (remoteGame.sessionName) normalized.sessionName = String(remoteGame.sessionName);
@@ -1717,14 +1935,14 @@ function exportToExcel() {
     csvContent += `Date: ${new Date().toLocaleDateString()}\n`;
     csvContent += `Elapsed: ${formatElapsed(getElapsedMs())}\n`;
     csvContent += `Rake: ${csvCell(formatRakeLabel(gameState.rake))}\n\n`;
-    csvContent += "Name,Role,Total Buy-in,Cash Out,P&L\n";
+    csvContent += "Name,Role,Total Buy-in,Cash Out,P&L,Settled\n";
 
     seatedPlayers().forEach(player => {
         const pnl = calculatePnL(player);
-        csvContent += `${csvCell(player.name)},Player,${player.totalBuyIn.toFixed(2)},${player.cashOut.toFixed(2)},${pnl.toFixed(2)}\n`;
+        csvContent += `${csvCell(player.name)},Player,${player.totalBuyIn.toFixed(2)},${player.cashOut.toFixed(2)},${pnl.toFixed(2)},${player.settled ? 'yes' : 'no'}\n`;
     });
     gameState.house.forEach((row) => {
-        csvContent += `${csvCell(row.name)},${row.kind === 'dealer' ? 'Dealer' : 'Host'},0.00,${row.cashOut.toFixed(2)},${row.cashOut.toFixed(2)}\n`;
+        csvContent += `${csvCell(row.name)},${row.kind === 'dealer' ? 'Dealer' : 'Host'},0.00,${row.cashOut.toFixed(2)},${row.cashOut.toFixed(2)},${row.settled ? 'yes' : 'no'}\n`;
     });
 
     const totals = cashTotals();
