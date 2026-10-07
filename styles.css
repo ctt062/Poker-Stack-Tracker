@@ -534,7 +534,7 @@ body.compact-mode table {
 
 body.compact-mode th:nth-child(1), /* Player Name */
 body.compact-mode td:nth-child(1) {
-    width: 20%;
+    width: 18%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -542,7 +542,7 @@ body.compact-mode td:nth-child(1) {
 
 body.compact-mode th:nth-child(2), /* Total Buy-in */
 body.compact-mode td:nth-child(2) {
-    width: 18%;
+    width: 16%;
 }
 
 body.compact-mode th:nth-child(3), /* Stack Control */
@@ -552,12 +552,17 @@ body.compact-mode td:nth-child(3) {
 
 body.compact-mode th:nth-child(4), /* Cash Out */
 body.compact-mode td:nth-child(4) {
-    width: 20%;
+    width: 18%;
 }
 
 body.compact-mode th:nth-child(5), /* P&L */
 body.compact-mode td:nth-child(5) {
-    width: 20%;
+    width: 16%;
+}
+
+body.compact-mode th:nth-child(6), /* Paid */
+body.compact-mode td:nth-child(6) {
+    width: 10%;
 }
 
 .btn-stack-minus,
@@ -722,9 +727,8 @@ tbody td {
 }
 
 .pnl-zero {
-    color: var(--text-primary);
+    color: var(--text-secondary);
     font-weight: 500;
-    opacity: 0.6;
 }
 
 .balance-section {
@@ -874,6 +878,14 @@ tbody td {
 
 /* Responsive */
 @media (max-width: 768px) {
+    .col-full {
+        display: none;
+    }
+
+    th {
+        white-space: nowrap;
+    }
+
     body {
         padding: 10px;
     }
@@ -1042,30 +1054,37 @@ tbody td {
 
     body.compact-mode th:nth-child(1),
     body.compact-mode td:nth-child(1) {
-        width: 22%;
+        width: 20%;
         font-size: 9px;
     }
 
     body.compact-mode th:nth-child(2),
     body.compact-mode td:nth-child(2) {
-        width: 16%;
+        width: 14%;
         font-size: 8px;
     }
 
     body.compact-mode th:nth-child(3),
     body.compact-mode td:nth-child(3) {
-        width: 24%;
+        width: 22%;
     }
 
     body.compact-mode th:nth-child(4),
     body.compact-mode td:nth-child(4) {
-        width: 18%;
+        width: 16%;
     }
 
     body.compact-mode th:nth-child(5),
     body.compact-mode td:nth-child(5) {
-        width: 20%;
+        width: 16%;
         font-size: 9px;
+    }
+
+    body.compact-mode th:nth-child(6),
+    body.compact-mode td:nth-child(6) {
+        width: 12%;
+        font-size: 8px;
+        padding: 6px 2px;
     }
 
     body.compact-mode .cashout-input {
@@ -1615,6 +1634,65 @@ tbody tr.empty-players-row:hover {
     opacity: 0.8;
 }
 
+.settle-col {
+    text-align: center;
+    width: 52px;
+    vertical-align: middle;
+}
+
+.settle-toggle {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    background: transparent;
+    color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
+.settle-toggle svg {
+    width: 14px;
+    height: 14px;
+}
+
+.settle-toggle[aria-pressed="true"] {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+
+.settle-toggle:hover:not(:disabled) {
+    border-color: var(--accent-primary);
+}
+
+.settle-toggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+tr.is-settled .player-name,
+tr.is-settled .buyin-amount {
+    opacity: 0.72;
+}
+
+.balance-actions {
+    margin-top: 16px;
+    display: flex;
+    justify-content: center;
+}
+
+.settlement-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
 .settlement-section {
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
@@ -1625,7 +1703,17 @@ tbody tr.empty-players-row:hover {
 
 .settlement-section h3 {
     font-size: 16px;
-    margin-bottom: 4px;
+    margin-bottom: 0;
+}
+
+body.compact-mode .settle-toggle {
+    width: 22px;
+    height: 22px;
+}
+
+body.compact-mode .settle-toggle svg {
+    width: 11px;
+    height: 11px;
 }
 
 .settlement-hint {

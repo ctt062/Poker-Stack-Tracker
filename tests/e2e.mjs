@@ -1068,6 +1068,64 @@ async function run() {
             ok('settlement helper lists transfers', settlement.hidden === false && settlement.items.length > 0, JSON.stringify(settlement));
             await shot(page, 'settlement-helper.png');
 
+            const paidCol = await page.evaluate(() => {
+                const th = document.querySelector('#playerTable thead th.settle-col');
+                const playerBtn = document.querySelector('tr:not(.house-row) .settle-toggle');
+                const houseBtns = document.querySelectorAll('.house-row .settle-toggle');
+                return {
+                    header: th ? th.textContent.trim() : '',
+                    player: !!(playerBtn && playerBtn.getAttribute('aria-pressed') === 'false'),
+                    house: houseBtns.length
+                };
+            });
+            ok('paid column is on the table', /paid/i.test(paidCol.header) && paidCol.player && paidCol.house === 2, JSON.stringify(paidCol));
+            await tap(page, 'tr:not(.house-row) .settle-toggle');
+            await page.waitForFunction(() => {
+                const btn = document.querySelector('tr:not(.house-row) .settle-toggle');
+                return btn && btn.getAttribute('aria-pressed') === 'true';
+            });
+            ok('paid toggle marks the player settled', true);
+
+            await page.browserContext().overridePermissions(origin, ['clipboard-read', 'clipboard-write']);
+            await tap(page, '#copyResultsBtn');
+            await page.waitForFunction(() => document.getElementById('copyResultsBtn')?.textContent === 'Copied');
+            const copied = await page.evaluate(() => navigator.clipboard.readText());
+            ok(
+                'copy results includes names and settlement',
+                /Alice/.test(copied) && /Settlement/i.test(copied) && /Dealer/.test(copied),
+                copied.slice(0, 400)
+            );
+
+            await addPlayer(page, 'Bob', 200);
+            await page.evaluate(() => {
+                const inputs = document.querySelectorAll('tr:not(.house-row) .cashout-input');
+                inputs[0].value = '280';
+                inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+                inputs[1].value = '150';
+                inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            await page.waitForFunction(() => {
+                const btn = document.getElementById('chopLeftoverBtn');
+                return btn && !btn.hidden && /chop/i.test(btn.textContent || '');
+            });
+            const chopLabel = await page.$eval('#chopLeftoverBtn', (el) => el.textContent);
+            ok('chop leftover is offered when books do not balance', /chop/i.test(chopLabel) && /winner/i.test(chopLabel), chopLabel);
+            await shot(page, 'settlement-chop-offer.png');
+            await page.evaluate(() => { window.confirm = () => true; });
+            await tap(page, '#chopLeftoverBtn');
+            await page.waitForFunction(() => {
+                const total = document.getElementById('totalBalance')?.textContent || '';
+                const btn = document.getElementById('chopLeftoverBtn');
+                return /\$0\.00/.test(total) && btn && btn.hidden;
+            });
+            const afterChop = await page.evaluate(() => ({
+                total: document.getElementById('totalBalance')?.textContent,
+                chopHidden: document.getElementById('chopLeftoverBtn')?.hidden,
+                aliceOut: document.querySelector('tr:not(.house-row) .cashout-input')?.value
+            }));
+            ok('chop leftover closes the books', afterChop.total === '$0.00' && afterChop.chopHidden === true, JSON.stringify(afterChop));
+            await shot(page, 'settlement-paid-copy-chop.png');
+
             await tap(page, '#accountBtn');
             await page.waitForSelector('#accountModal', { visible: true });
             const accountUi = await page.evaluate(() => {
