@@ -358,6 +358,31 @@ async function run() {
         ok('expired restore clears local room id', storage.getItem('pst_room_id') == null);
     }
 
+    {
+        const { RoomSync, rooms, roomCodes } = loadRoom();
+        const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
+        const code = snap.code;
+        const roomId = snap.roomId;
+        await RoomSync.leaveRoom();
+        ok(
+            'leave as last person keeps the room active',
+            !!(rooms[roomId] && rooms[roomId].status === 'active'),
+            JSON.stringify(rooms[roomId])
+        );
+        ok(
+            'leave as last person keeps the join code',
+            !!(roomCodes[code] && roomCodes[code].roomId === roomId),
+            JSON.stringify(roomCodes)
+        );
+        ok('leave as last person does not mark abandoned', rooms[roomId].status !== 'abandoned');
+        const again = await RoomSync.joinRoom(code, 'River');
+        ok(
+            'host can rejoin with the same code after leaving',
+            !!(again && again.roomId === roomId && again.role === 'host' && again.code === code),
+            JSON.stringify(again)
+        );
+    }
+
     if (failures.length) {
         console.error(`\n${failures.length} failed`);
         process.exit(1);

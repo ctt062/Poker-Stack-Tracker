@@ -877,19 +877,10 @@
 
         const others = Object.keys(participants).filter((id) => id !== myUid);
 
-        // Last person out: close the session; delete after EMPTY_ROOM_TTL_MS
+        // Last person out: keep the room live so they can rejoin with the code.
+        // Leave only detaches this device. End room is the explicit close.
+        // Empty rooms still count toward the 3-room cap and expire after 1 week.
         if (others.length === 0) {
-            const emptyAt = Date.now();
-            await roomRef.update({
-                status: 'abandoned',
-                emptyAt,
-                expiresAt: new Date(),
-                participants: {},
-                updatedAt: serverTs()
-            });
-            await deleteRoomCode(data.code || prev.code);
-            await releaseCreatedRoom(prev.roomId, data.createdBy || data.hostId);
-            scheduleAbandonCleanup(prev.roomId, emptyAt);
             return;
         }
 
@@ -897,17 +888,6 @@
         if (data.hostId === myUid || (participants[myUid] && participants[myUid].role === 'host')) {
             const next = pickNextHost(participants, myUid);
             if (!next) {
-                const emptyAt = Date.now();
-                await roomRef.update({
-                    status: 'abandoned',
-                    emptyAt,
-                    expiresAt: new Date(),
-                    participants: {},
-                    updatedAt: serverTs()
-                });
-                await deleteRoomCode(data.code || prev.code);
-                await releaseCreatedRoom(prev.roomId, data.createdBy || data.hostId);
-                scheduleAbandonCleanup(prev.roomId, emptyAt);
                 return;
             }
             await roomRef.update({
