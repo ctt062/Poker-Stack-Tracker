@@ -79,7 +79,7 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 | Viewer | Live read-only table |
 | Code | 4-digit code (`0000`-`9999`) in `roomCodes/{code}` → `rooms/{id}` |
 | Room cap | One account can have **3** created rooms at a time (`users/{uid}.createdRooms`). End a room or wait for expiry to create another. |
-| Room lifetime | Each room stores `expiresAt` (~7 days after create). Join, restore, create, and the live listener delete expired rooms and their codes. Ended or abandoned rooms expire immediately. |
+| Room lifetime | Each room stores `expiresAt` (~7 days after create). Join, restore, create, and the live listener delete expired rooms and their codes. **Leave** keeps the room and code so you can rejoin. **End room** closes the code for everyone. Ended rooms expire immediately. |
 | Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
 | SDK | When config is present, Firebase scripts load at startup for the sign-in gate. An empty `firebase-config.js` keeps the app fully local |
 
