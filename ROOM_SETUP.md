@@ -17,7 +17,7 @@ Home-game traffic is tiny compared to Firebase free quotas. If you previously us
    - **Google** → Enable → set a support email → Save
    - **Email/Password** → Enable → Save
 3. Do **not** enable Apple Sign-In unless you have an Apple Developer Program membership. The app does not show an Apple button.
-4. Email/password accounts must verify their address before the tracker or rooms unlock. The app sends Firebase's verification email on create and offers Resend. Google sign-in does not send a second code; Google already verified the address. If someone created a password account first, Continue with Google asks them to sign in with that password once so Google can be connected.
+4. Email/password accounts must verify their address before the tracker or rooms unlock. The app sends Firebase's verification email on create and offers Resend. Google sign-in does not send a second code; Google already verified the address. A Gmail password typed into the email form will not work. If someone created a password account first, Continue with Google asks them to sign in with that password once so Google can be connected. On iPhone, Google uses a popup, not a redirect, because GitHub Pages is not the Firebase auth domain.
 5. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
 
 Do not enable Anonymous Auth; the app does not use it. Sign-in and display name behavior is described in [README.md](README.md).

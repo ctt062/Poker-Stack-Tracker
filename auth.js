@@ -95,8 +95,8 @@
             'auth/invalid-email': 'Enter a valid email address.',
             'auth/user-disabled': 'This account has been disabled.',
             'auth/user-not-found': 'No account exists for that email. Create one first.',
-            'auth/wrong-password': 'Wrong password.',
-            'auth/invalid-credential': 'Wrong email or password.',
+            'auth/wrong-password': 'Wrong password. If this is Gmail, tap Continue with Google.',
+            'auth/invalid-credential': 'Wrong email or password. If this is Gmail, tap Continue with Google.',
             'auth/email-already-in-use': 'That email already has an account. Sign in instead.',
             'auth/weak-password': 'Password must be at least 6 characters.',
             'auth/too-many-requests': 'Too many attempts. Wait a minute and try again.',
@@ -123,6 +123,10 @@
         }
     }
 
+    function looksLikeGmail(email) {
+        return /@(gmail|googlemail)\.com$/i.test(String(email || '').trim());
+    }
+
     async function decorateAuthError(err, extras) {
         const wrapped = friendlyAuthError(err, extras && extras.providerHint);
         const email = String((extras && extras.email) || wrapped.email || '').trim();
@@ -135,12 +139,31 @@
                 next.email = email;
                 return next;
             }
+            // Email enumeration protection often returns no methods. Gmail still
+            // cannot use the Google account password in this form.
+            if (methods.indexOf('password') === -1 && looksLikeGmail(email)) {
+                const next = new Error('Your Google password does not work here. Tap Continue with Google.');
+                next.code = code;
+                next.email = email;
+                return next;
+            }
         }
         if (email) wrapped.email = email;
         return wrapped;
     }
 
+    function authHostMatchesApp() {
+        const authDomain = String((global.FIREBASE_CONFIG || {}).authDomain || '');
+        const host = String((global.location && global.location.hostname) || '');
+        if (!authDomain || !host) return false;
+        return host === authDomain || host.endsWith('.' + authDomain);
+    }
+
     function shouldUseRedirect() {
+        // Redirect only works when the app and authDomain share a site.
+        // GitHub Pages vs project.firebaseapp.com loses the result on iPhone
+        // because Safari blocks that cross-site storage.
+        if (!authHostMatchesApp()) return false;
         if (typeof navigator === 'undefined') return false;
         const ua = navigator.userAgent || '';
         const iOS = /iPad|iPhone|iPod/.test(ua) ||
@@ -472,24 +495,25 @@
     }
 
     async function signInWithProvider(provider, providerId) {
-        await init();
-        const redirectFirst = shouldUseRedirect();
+        if (!(initialized && auth)) await init();
         try {
-            if (redirectFirst) {
-                await auth.signInWithRedirect(provider);
-                return snapshot();
-            }
             const cred = await auth.signInWithPopup(provider);
             await applyUser(cred.user);
             return snapshot();
         } catch (e) {
             const code = e && e.code;
-            const canRedirect = code === 'auth/popup-blocked' ||
-                code === 'auth/operation-not-supported-in-this-environment' ||
-                code === 'auth/cancelled-popup-request';
-            if (!redirectFirst && canRedirect) {
+            const canRedirect = (code === 'auth/popup-blocked' ||
+                code === 'auth/operation-not-supported-in-this-environment') &&
+                shouldUseRedirect() &&
+                typeof auth.signInWithRedirect === 'function';
+            if (canRedirect) {
                 await auth.signInWithRedirect(provider);
                 return snapshot();
+            }
+            if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+                const next = new Error('Google sign-in needs a browser window. Allow popups, or open this page in Safari.');
+                next.code = code;
+                throw next;
             }
             throw friendlyAuthError(e, providerId);
         }
@@ -563,7 +587,7 @@
     }
 
     async function signInGoogle(options) {
-        await init();
+        if (!(initialized && auth)) await init();
         const provider = buildGoogleProvider(options);
         try {
             const snap = await signInWithProvider(provider, 'google.com');
@@ -577,14 +601,10 @@
     }
 
     async function linkGoogle(options) {
-        await init();
+        if (!(initialized && auth)) await init();
         if (!auth || !auth.currentUser) throw new Error('Sign in first.');
         const provider = buildGoogleProvider(options);
         try {
-            if (shouldUseRedirect() && typeof auth.currentUser.linkWithRedirect === 'function') {
-                await auth.currentUser.linkWithRedirect(provider);
-                return snapshot();
-            }
             const cred = await auth.currentUser.linkWithPopup(provider);
             await applyUser(cred.user || auth.currentUser);
             const snap = snapshot();

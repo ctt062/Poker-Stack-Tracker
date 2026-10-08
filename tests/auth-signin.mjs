@@ -31,22 +31,39 @@ function loadAuth(options = {}) {
     const storage = memStorage(options.localStorage || {});
     const authListeners = [];
     let lastGoogleParams = null;
+    let lastGoogleMethod = null;
     let linkedCredential = null;
 
     function attachLink(target) {
-        if (!target || typeof target.linkWithCredential === 'function') return target;
-        target.linkWithCredential = async (cred) => {
-            linkedCredential = cred;
-            const data = Array.isArray(target.providerData) ? target.providerData.slice() : [];
-            if (!data.some((p) => p && p.providerId === 'google.com')) {
-                data.push({ providerId: 'google.com' });
-            }
-            target.providerData = data;
-            target.emailVerified = true;
-            currentUser = target;
-            notifyAuth(target);
-            return { user: target };
-        };
+        if (!target) return target;
+        if (typeof target.linkWithCredential !== 'function') {
+            target.linkWithCredential = async (cred) => {
+                linkedCredential = cred;
+                const data = Array.isArray(target.providerData) ? target.providerData.slice() : [];
+                if (!data.some((p) => p && p.providerId === 'google.com')) {
+                    data.push({ providerId: 'google.com' });
+                }
+                target.providerData = data;
+                target.emailVerified = true;
+                currentUser = target;
+                notifyAuth(target);
+                return { user: target };
+            };
+        }
+        if (typeof target.linkWithPopup !== 'function') {
+            target.linkWithPopup = async () => {
+                lastGoogleMethod = 'popup';
+                const data = Array.isArray(target.providerData) ? target.providerData.slice() : [];
+                if (!data.some((p) => p && p.providerId === 'google.com')) {
+                    data.push({ providerId: 'google.com' });
+                }
+                target.providerData = data;
+                target.emailVerified = true;
+                currentUser = target;
+                notifyAuth(target);
+                return { user: target };
+            };
+        }
         return target;
     }
     if (user) attachLink(user);
@@ -82,7 +99,19 @@ function loadAuth(options = {}) {
     const sandbox = {
         console,
         localStorage: storage,
-        FIREBASE_CONFIG: { apiKey: 'test', projectId: 'p', appId: 'a' },
+        FIREBASE_CONFIG: {
+            apiKey: 'test',
+            projectId: 'p',
+            appId: 'a',
+            authDomain: 'poker-stack-tracker.firebaseapp.com'
+        },
+        location: options.location || { hostname: 'ctt062.github.io' },
+        navigator: options.navigator || {
+            userAgent: 'node',
+            platform: 'node',
+            standalone: false,
+            maxTouchPoints: 0
+        },
         firebase: undefined,
         document: {
             createElement() {
@@ -129,6 +158,7 @@ function loadAuth(options = {}) {
                                 return { user };
                             },
                             async signInWithPopup() {
+                                lastGoogleMethod = 'popup';
                                 if (options.googleSignInError) throw options.googleSignInError;
                                 const gUser = options.googleUser || user;
                                 if (!gUser) {
@@ -140,6 +170,10 @@ function loadAuth(options = {}) {
                                 currentUser = gUser;
                                 notifyAuth(gUser);
                                 return { user: gUser };
+                            },
+                            async signInWithRedirect() {
+                                lastGoogleMethod = 'redirect';
+                                if (options.googleRedirectError) throw options.googleRedirectError;
                             },
                             async fetchSignInMethodsForEmail(email) {
                                 if (typeof options.fetchSignInMethods === 'function') {
@@ -237,6 +271,7 @@ function loadAuth(options = {}) {
         displayNames,
         getUser: () => currentUser,
         googleParams: () => lastGoogleParams,
+        lastGoogleMethod: () => lastGoogleMethod,
         linkedCredential: () => linkedCredential
     };
 }
@@ -661,6 +696,91 @@ async function run() {
         ok(
             'password sign-in on a Google-only email points at Google',
             !!(err && /continue with google/i.test(err.message)),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const { AppAuth } = loadAuth({
+            emailSignInError: Object.assign(new Error('bad'), { code: 'auth/invalid-credential' }),
+            signInMethods: []
+        });
+        await AppAuth.init();
+        let err = null;
+        try {
+            await AppAuth.signInEmail('chongtt062@gmail.com', 'gmail-password');
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'hidden providers still tell Gmail to use Google, not the Google password',
+            !!(err && /continue with google/i.test(err.message) && /google password/i.test(err.message)),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const googleUser = {
+            uid: 'g-ios',
+            email: 'chongtt062@gmail.com',
+            emailVerified: true,
+            isAnonymous: false,
+            displayName: 'Chong',
+            providerData: [{ providerId: 'google.com' }]
+        };
+        const { AppAuth, lastGoogleMethod } = loadAuth({
+            googleUser,
+            navigator: {
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+                platform: 'iPhone',
+                standalone: true,
+                maxTouchPoints: 5
+            },
+            location: { hostname: 'ctt062.github.io' },
+            users: { 'g-ios': { uid: 'g-ios', displayName: 'Chong', nameKey: 'chong' } }
+        });
+        await AppAuth.init();
+        const snap = await AppAuth.signInGoogle({ loginHint: 'chongtt062@gmail.com' });
+        ok(
+            'iPhone Google uses popup, not a cross-site redirect',
+            lastGoogleMethod() === 'popup',
+            lastGoogleMethod()
+        );
+        ok(
+            'iPhone Google signs in without an app password',
+            snap.signedIn === true && snap.hasGoogle === true && snap.email === 'chongtt062@gmail.com',
+            JSON.stringify(snap)
+        );
+    }
+
+    {
+        const popupErr = new Error('blocked');
+        popupErr.code = 'auth/popup-blocked';
+        const { AppAuth, lastGoogleMethod } = loadAuth({
+            googleSignInError: popupErr,
+            navigator: {
+                userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15',
+                platform: 'iPhone',
+                standalone: true,
+                maxTouchPoints: 5
+            },
+            location: { hostname: 'ctt062.github.io' }
+        });
+        await AppAuth.init();
+        let err = null;
+        try {
+            await AppAuth.signInGoogle();
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'blocked popup on GitHub Pages does not fall back to redirect',
+            lastGoogleMethod() === 'popup',
+            lastGoogleMethod()
+        );
+        ok(
+            'blocked popup asks to open a browser window',
+            !!(err && /browser window|safari|popup/i.test(err.message)),
             String((err && err.message) || err)
         );
     }
