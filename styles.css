@@ -241,13 +241,17 @@ h1 {
 }
 
 .btn {
+    appearance: none;
+    -webkit-appearance: none;
     padding: 10px 16px;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.2s ease;
+    line-height: 1.2;
+    touch-action: manipulation;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
     outline: none;
 }
 
@@ -767,6 +771,12 @@ tbody td {
     font-size: 14px;
     font-weight: 500;
     min-width: auto;
+    min-height: 40px;
+}
+
+#undoBtn {
+    flex-shrink: 0;
+    min-height: 40px;
 }
 
 .footer {
@@ -1217,9 +1227,14 @@ tbody td {
 }
 
 .btn-secondary {
-    background: transparent;
+    background: var(--bg-primary);
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    border: 1px solid #9ca3af;
+}
+
+body.dark-mode .btn-secondary {
+    background: var(--bg-input);
+    border-color: #6b7280;
 }
 
 .btn-secondary:hover {

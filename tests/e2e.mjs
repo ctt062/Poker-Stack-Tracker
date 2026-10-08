@@ -812,6 +812,47 @@ async function run() {
 
             const undoOn = await page.$eval('#undoBtn', (el) => !el.disabled);
             ok('undo enabled after typed buy-in', undoOn);
+            await page.waitForFunction(() => {
+                const el = document.getElementById('undoBtn');
+                return el && !el.disabled && Number(getComputedStyle(el).opacity) > 0.9;
+            });
+            const tapTargets = await page.evaluate(() => {
+                function look(id) {
+                    const el = document.getElementById(id);
+                    if (!el) return { id, missing: true };
+                    const s = getComputedStyle(el);
+                    const r = el.getBoundingClientRect();
+                    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                    return {
+                        id,
+                        disabled: el.disabled,
+                        opacity: Number(s.opacity),
+                        bg: s.backgroundColor,
+                        w: Math.round(r.width),
+                        h: Math.round(r.height),
+                        hit: top === el || el.contains(top)
+                    };
+                }
+                return { undo: look('undoBtn'), copy: look('copyResultsBtn') };
+            });
+            ok(
+                'enabled undo is opaque and hittable',
+                tapTargets.undo.disabled === false
+                    && tapTargets.undo.opacity > 0.9
+                    && tapTargets.undo.hit
+                    && tapTargets.undo.h >= 36
+                    && tapTargets.undo.bg !== 'rgba(0, 0, 0, 0)',
+                JSON.stringify(tapTargets.undo)
+            );
+            ok(
+                'copy button is enabled, opaque, and hittable',
+                tapTargets.copy.disabled === false
+                    && tapTargets.copy.opacity > 0.9
+                    && tapTargets.copy.hit
+                    && tapTargets.copy.h >= 36
+                    && tapTargets.copy.bg !== 'rgba(0, 0, 0, 0)',
+                JSON.stringify(tapTargets.copy)
+            );
             await tap(page, '#undoBtn');
             await page.waitForFunction(() => {
                 const el = document.querySelector('.buyin-amount');
