@@ -8,6 +8,7 @@
     const DISPLAY_NAME_KEY = 'pst_display_name';
     const LOCAL_NAME_EPOCH_KEY = 'pst_display_name_epoch';
     const LOCAL_NAME_EPOCH = '2';
+    const GOOGLE_HINT_KEY = 'pst_google_login_hint';
     const SDK_VERSION = '10.14.1';
     const SDK_SCRIPTS = [
         'firebase-app-compat.js',
@@ -23,6 +24,9 @@
     let registryName = '';
     let nameEpoch = 0;
     let applyHeld = false;
+    let nextGooglePickAccount = false;
+    let pendingLinkCredential = null;
+    let pendingLinkEmail = '';
 
     const listeners = {
         user: [],
@@ -97,11 +101,42 @@
             'auth/weak-password': 'Password must be at least 6 characters.',
             'auth/too-many-requests': 'Too many attempts. Wait a minute and try again.',
             'auth/network-request-failed': 'Network error. Check your connection.',
-            'auth/account-exists-with-different-credential': 'That email is already used with a different sign-in method.'
+            'auth/account-exists-with-different-credential': 'That email already has an account. Sign in with email and password to connect Google.',
+            'auth/credential-already-in-use': 'That Google account is already connected to someone else.'
         };
         const message = map[code] || raw || 'Sign-in failed.';
         const wrapped = new Error(message);
         wrapped.code = code;
+        if (err && err.email) wrapped.email = err.email;
+        if (err && err.credential) wrapped.credential = err.credential;
+        return wrapped;
+    }
+
+    async function fetchSignInMethods(email) {
+        const addr = String(email || '').trim();
+        if (!addr || !auth || typeof auth.fetchSignInMethodsForEmail !== 'function') return [];
+        try {
+            const methods = await auth.fetchSignInMethodsForEmail(addr);
+            return Array.isArray(methods) ? methods : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async function decorateAuthError(err, extras) {
+        const wrapped = friendlyAuthError(err, extras && extras.providerHint);
+        const email = String((extras && extras.email) || wrapped.email || '').trim();
+        const code = wrapped.code || '';
+        if (email && (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found')) {
+            const methods = await fetchSignInMethods(email);
+            if (methods.indexOf('google.com') !== -1 && methods.indexOf('password') === -1) {
+                const next = new Error('This email uses Google. Tap Continue with Google.');
+                next.code = code;
+                next.email = email;
+                return next;
+            }
+        }
+        if (email) wrapped.email = email;
         return wrapped;
     }
 
@@ -115,7 +150,13 @@
         return iOS || standalone;
     }
 
+    function hasGoogleProvider(user) {
+        return !!(user && Array.isArray(user.providerData) &&
+            user.providerData.some((p) => p && p.providerId === 'google.com'));
+    }
+
     function providerId(user) {
+        if (hasGoogleProvider(user)) return 'google.com';
         if (!user || !user.providerData || !user.providerData.length) return '';
         return user.providerData[0].providerId || '';
     }
@@ -320,8 +361,10 @@
             photoURL: signedIn ? (currentUser.photoURL || '') : '',
             provider: signedIn ? providerId(currentUser) : '',
             providerLabel: signedIn ? providerLabel(providerId(currentUser)) : '',
+            hasGoogle: signedIn ? hasGoogleProvider(currentUser) : false,
             emailVerified: signedIn ? !!currentUser.emailVerified : false,
-            displayName: getDisplayName()
+            displayName: getDisplayName(),
+            pendingLinkEmail: pendingLinkEmail || ''
         };
     }
 
@@ -385,9 +428,15 @@
 
             try {
                 const redirect = await auth.getRedirectResult();
-                if (redirect && redirect.user) await applyUser(redirect.user);
+                if (redirect && redirect.user) {
+                    await applyUser(redirect.user);
+                    if (redirect.user.email) rememberGoogleHint(redirect.user.email);
+                    pendingLinkCredential = null;
+                    pendingLinkEmail = '';
+                }
             } catch (e) {
-                emit('error', friendlyAuthError(e).message);
+                const handled = await capturePendingGoogleLink(e);
+                emit('error', handled.message);
             }
 
             await new Promise((resolve) => {
@@ -416,7 +465,7 @@
         const snap = await init();
         if (!isConfigured()) return snap;
         if (!snap.signedIn) throw new Error('Sign in with Google or email first.');
-        if (snap.provider !== 'google.com' && !snap.emailVerified) {
+        if (!snap.hasGoogle && snap.provider !== 'google.com' && !snap.emailVerified) {
             throw new Error('Verify your email first.');
         }
         return snap;
@@ -446,8 +495,23 @@
         }
     }
 
-    async function signInGoogle() {
-        await init();
+    function rememberGoogleHint(email) {
+        const addr = String(email || '').trim();
+        if (!addr) return;
+        try {
+            global.localStorage.setItem(GOOGLE_HINT_KEY, addr);
+        } catch (e) { /* ignore */ }
+    }
+
+    function storedGoogleHint() {
+        try {
+            return String(global.localStorage.getItem(GOOGLE_HINT_KEY) || '').trim();
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function buildGoogleProvider(options) {
         const AuthNS = requireAuthSdk();
         if (typeof AuthNS.GoogleAuthProvider !== 'function') {
             throw new Error('Could not reach Firebase. Check your connection and try again.');
@@ -455,18 +519,92 @@
         const provider = new AuthNS.GoogleAuthProvider();
         provider.addScope('email');
         provider.addScope('profile');
-        provider.setCustomParameters({ prompt: 'select_account' });
-        return signInWithProvider(provider, 'google.com');
+        const pick = !!(options && options.pickAccount) || nextGooglePickAccount;
+        nextGooglePickAccount = false;
+        const params = {};
+        if (pick) params.prompt = 'select_account';
+        const hint = String((options && options.loginHint) || storedGoogleHint() || '').trim();
+        if (hint && !pick) params.login_hint = hint;
+        if (Object.keys(params).length) provider.setCustomParameters(params);
+        return provider;
+    }
+
+    async function capturePendingGoogleLink(err, fallbackEmail) {
+        const wrapped = friendlyAuthError(err);
+        if (wrapped.code !== 'auth/account-exists-with-different-credential') {
+            return wrapped;
+        }
+        pendingLinkCredential = wrapped.credential || (err && err.credential) || null;
+        pendingLinkEmail = String(
+            wrapped.email || (err && err.email) || fallbackEmail || ''
+        ).trim();
+        const methods = pendingLinkEmail ? await fetchSignInMethods(pendingLinkEmail) : [];
+        const next = new Error(
+            methods.indexOf('password') !== -1
+                ? 'This email already has a password. Sign in with email and password to connect Google.'
+                : 'That email already has an account. Sign in with email and password to connect Google.'
+        );
+        next.code = wrapped.code;
+        next.email = pendingLinkEmail;
+        return next;
+    }
+
+    async function maybeLinkPendingGoogle() {
+        if (!pendingLinkCredential || !auth || !auth.currentUser) return;
+        const cred = pendingLinkCredential;
+        pendingLinkCredential = null;
+        pendingLinkEmail = '';
+        try {
+            await auth.currentUser.linkWithCredential(cred);
+        } catch (e) {
+            console.warn('linkGoogle', e);
+        }
+        await applyUser(auth.currentUser);
+    }
+
+    async function signInGoogle(options) {
+        await init();
+        const provider = buildGoogleProvider(options);
+        try {
+            const snap = await signInWithProvider(provider, 'google.com');
+            if (snap && snap.email) rememberGoogleHint(snap.email);
+            pendingLinkCredential = null;
+            pendingLinkEmail = '';
+            return snap;
+        } catch (e) {
+            throw await capturePendingGoogleLink(e, options && options.loginHint);
+        }
+    }
+
+    async function linkGoogle(options) {
+        await init();
+        if (!auth || !auth.currentUser) throw new Error('Sign in first.');
+        const provider = buildGoogleProvider(options);
+        try {
+            if (shouldUseRedirect() && typeof auth.currentUser.linkWithRedirect === 'function') {
+                await auth.currentUser.linkWithRedirect(provider);
+                return snapshot();
+            }
+            const cred = await auth.currentUser.linkWithPopup(provider);
+            await applyUser(cred.user || auth.currentUser);
+            const snap = snapshot();
+            if (snap.email) rememberGoogleHint(snap.email);
+            return snap;
+        } catch (e) {
+            throw await decorateAuthError(e, { providerHint: 'google.com' });
+        }
     }
 
     async function signInEmail(email, password) {
         await init();
+        const addr = String(email || '').trim();
         try {
-            const cred = await auth.signInWithEmailAndPassword(String(email || '').trim(), password);
+            const cred = await auth.signInWithEmailAndPassword(addr, password);
             await applyUser(cred.user);
+            await maybeLinkPendingGoogle();
             return snapshot();
         } catch (e) {
-            throw friendlyAuthError(e);
+            throw await decorateAuthError(e, { email: addr });
         }
     }
 
@@ -551,7 +689,8 @@
         return trimmed;
     }
 
-    async function signOut() {
+    async function signOut(options) {
+        if (options && options.pickNextGoogleAccount) nextGooglePickAccount = true;
         nameEpoch += 1;
         if (auth) {
             try { await auth.signOut(); } catch (e) { console.warn('signOut', e); }
@@ -577,6 +716,7 @@
         suggestedDisplayName,
         setDisplayName,
         signInGoogle,
+        linkGoogle,
         signInEmail,
         createEmailAccount,
         refreshEmailVerification,

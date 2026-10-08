@@ -459,7 +459,9 @@
 
             <div id="authCreatePanel" hidden>
                 <h2>Create account</h2>
-                <p class="auth-lead">Email, password, and a unique display name. We will send a verification link before you can use the tracker.</p>
+                <p class="auth-lead">Google is instant. Email and password need a verification link before the tracker unlocks.</p>
+                <button type="button" id="authCreateGoogleBtn" class="btn btn-auth btn-auth-google">Continue with Google</button>
+                <div class="room-divider">or email</div>
                 <form id="authCreateForm">
                     <div class="form-group">
                         <label for="authCreateEmail">Email</label>
@@ -522,6 +524,7 @@
                 </div>
                 <div class="form-buttons">
                     <button type="submit" class="btn btn-primary">Save name</button>
+                    <button type="button" id="connectGoogleBtn" class="btn btn-secondary" hidden>Connect Google</button>
                     <button type="button" id="signOutBtn" class="btn btn-danger">Sign out</button>
                 </div>
             </form>

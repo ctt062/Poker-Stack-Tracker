@@ -25,11 +25,31 @@ function memStorage(seed = {}) {
 
 function loadAuth(options = {}) {
     const user = options.user || null;
-    let currentUser = user;
+    let currentUser = options.signedOut ? null : user;
     const users = { ...(options.users || {}) };
     const displayNames = { ...(options.displayNames || {}) };
     const storage = memStorage(options.localStorage || {});
     const authListeners = [];
+    let lastGoogleParams = null;
+    let linkedCredential = null;
+
+    function attachLink(target) {
+        if (!target || typeof target.linkWithCredential === 'function') return target;
+        target.linkWithCredential = async (cred) => {
+            linkedCredential = cred;
+            const data = Array.isArray(target.providerData) ? target.providerData.slice() : [];
+            if (!data.some((p) => p && p.providerId === 'google.com')) {
+                data.push({ providerId: 'google.com' });
+            }
+            target.providerData = data;
+            target.emailVerified = true;
+            currentUser = target;
+            notifyAuth(target);
+            return { user: target };
+        };
+        return target;
+    }
+    if (user) attachLink(user);
 
     function notifyAuth(nextUser) {
         authListeners.slice().forEach((cb) => cb(nextUser));
@@ -76,7 +96,15 @@ function loadAuth(options = {}) {
                         return {
                             get currentUser() { return currentUser; },
                             useDeviceLanguage() {},
-                            async getRedirectResult() { return { user: null }; },
+                            async getRedirectResult() {
+                                if (options.redirectError) throw options.redirectError;
+                                if (options.redirectUser) {
+                                    attachLink(options.redirectUser);
+                                    currentUser = options.redirectUser;
+                                    return { user: options.redirectUser };
+                                }
+                                return { user: null };
+                            },
                             onAuthStateChanged(cb) {
                                 authListeners.push(cb);
                                 cb(currentUser);
@@ -90,6 +118,7 @@ function loadAuth(options = {}) {
                                 notifyAuth(null);
                             },
                             async signInWithEmailAndPassword(email, password) {
+                                if (options.emailSignInError) throw options.emailSignInError;
                                 if (!user) {
                                     const err = new Error('No account');
                                     err.code = 'auth/user-not-found';
@@ -98,6 +127,25 @@ function loadAuth(options = {}) {
                                 currentUser = user;
                                 notifyAuth(user);
                                 return { user };
+                            },
+                            async signInWithPopup() {
+                                if (options.googleSignInError) throw options.googleSignInError;
+                                const gUser = options.googleUser || user;
+                                if (!gUser) {
+                                    const err = new Error('No Google user');
+                                    err.code = 'auth/internal-error';
+                                    throw err;
+                                }
+                                attachLink(gUser);
+                                currentUser = gUser;
+                                notifyAuth(gUser);
+                                return { user: gUser };
+                            },
+                            async fetchSignInMethodsForEmail(email) {
+                                if (typeof options.fetchSignInMethods === 'function') {
+                                    return options.fetchSignInMethods(email);
+                                }
+                                return options.signInMethods || [];
                             },
                             async createUserWithEmailAndPassword(email, password) {
                                 const created = {
@@ -123,6 +171,7 @@ function loadAuth(options = {}) {
                                         if (options.verifyOnReload) created.emailVerified = true;
                                     }
                                 };
+                                attachLink(created);
                                 currentUser = created;
                                 notifyAuth(created);
                                 return { user: created };
@@ -131,7 +180,10 @@ function loadAuth(options = {}) {
                     };
                     authFn.GoogleAuthProvider = function GoogleAuthProvider() {
                         this.addScope = () => {};
-                        this.setCustomParameters = () => {};
+                        this.setCustomParameters = (params) => {
+                            lastGoogleParams = params || {};
+                            this.params = lastGoogleParams;
+                        };
                     };
                     authFn.OAuthProvider = function OAuthProvider() {
                         this.addScope = () => {};
@@ -183,7 +235,9 @@ function loadAuth(options = {}) {
         storage,
         users,
         displayNames,
-        getUser: () => currentUser
+        getUser: () => currentUser,
+        googleParams: () => lastGoogleParams,
+        linkedCredential: () => linkedCredential
     };
 }
 
@@ -491,6 +545,189 @@ async function run() {
             snap.signedIn === true && snap.emailVerified === true,
             JSON.stringify(snap)
         );
+    }
+
+    {
+        const googleUser = {
+            uid: 'g1',
+            email: 'river@gmail.com',
+            emailVerified: true,
+            isAnonymous: false,
+            displayName: 'River',
+            providerData: [{ providerId: 'google.com' }]
+        };
+        const { AppAuth, googleParams, storage } = loadAuth({
+            googleUser,
+            users: { g1: { uid: 'g1', displayName: 'River', nameKey: 'river' } }
+        });
+        await AppAuth.init();
+        const snap = await AppAuth.signInGoogle();
+        ok('Google sign-in does not force the account picker', googleParams() == null || googleParams().prompt !== 'select_account', JSON.stringify(googleParams()));
+        ok('Google sign-in remembers the email for next time', storage.getItem('pst_google_login_hint') === 'river@gmail.com', storage.getItem('pst_google_login_hint'));
+        ok('Google snapshot skips extra email verification', snap.hasGoogle === true && snap.provider === 'google.com', JSON.stringify(snap));
+    }
+
+    {
+        const googleUser = {
+            uid: 'g1',
+            email: 'river@gmail.com',
+            emailVerified: true,
+            isAnonymous: false,
+            providerData: [{ providerId: 'google.com' }]
+        };
+        const { AppAuth, googleParams } = loadAuth({ googleUser });
+        await AppAuth.init();
+        await AppAuth.signInGoogle({ loginHint: 'river@gmail.com' });
+        ok(
+            'Google sign-in sends login_hint so the email is not typed again',
+            googleParams() && googleParams().login_hint === 'river@gmail.com' && googleParams().prompt !== 'select_account',
+            JSON.stringify(googleParams())
+        );
+        await AppAuth.signOut({ pickNextGoogleAccount: true });
+        await AppAuth.signInGoogle();
+        ok(
+            'Use a different account asks Google to pick',
+            googleParams() && googleParams().prompt === 'select_account',
+            JSON.stringify(googleParams())
+        );
+    }
+
+    {
+        const passwordUser = {
+            uid: 'p1',
+            email: 'river@gmail.com',
+            emailVerified: true,
+            isAnonymous: false,
+            displayName: 'River',
+            providerData: [{ providerId: 'password' }]
+        };
+        const pendingCred = { providerId: 'google.com', id: 'pending-google' };
+        const googleErr = new Error('exists');
+        googleErr.code = 'auth/account-exists-with-different-credential';
+        googleErr.email = 'river@gmail.com';
+        googleErr.credential = pendingCred;
+        const { AppAuth, linkedCredential } = loadAuth({
+            user: passwordUser,
+            googleSignInError: googleErr,
+            signInMethods: ['password'],
+            users: { p1: { uid: 'p1', displayName: 'River', nameKey: 'river' } }
+        });
+        await AppAuth.init();
+        let err = null;
+        try {
+            await AppAuth.signInGoogle();
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'Google on a password account asks to sign in with password to connect',
+            !!(err && /password/i.test(err.message) && err.email === 'river@gmail.com'),
+            String((err && err.message) || err)
+        );
+        const snap = await AppAuth.signInEmail('river@gmail.com', 'secret');
+        ok('password sign-in links the pending Google credential', linkedCredential() === pendingCred, JSON.stringify(linkedCredential()));
+        ok('linked account is treated as Google', snap.hasGoogle === true && snap.provider === 'google.com', JSON.stringify(snap));
+    }
+
+    {
+        const passwordUser = {
+            uid: 'p1',
+            email: 'river@gmail.com',
+            emailVerified: false,
+            isAnonymous: false,
+            providerData: [{ providerId: 'password' }, { providerId: 'google.com' }]
+        };
+        const { AppAuth } = loadAuth({ user: passwordUser });
+        const snap = await AppAuth.init();
+        ok(
+            'password-first user with Google linked skips the verify gate',
+            snap.provider === 'google.com' && snap.hasGoogle === true,
+            JSON.stringify(snap)
+        );
+    }
+
+    {
+        const { AppAuth } = loadAuth({
+            emailSignInError: Object.assign(new Error('bad'), { code: 'auth/invalid-credential' }),
+            signInMethods: ['google.com']
+        });
+        await AppAuth.init();
+        let err = null;
+        try {
+            await AppAuth.signInEmail('river@gmail.com', 'nope');
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'password sign-in on a Google-only email points at Google',
+            !!(err && /continue with google/i.test(err.message)),
+            String((err && err.message) || err)
+        );
+    }
+
+    {
+        const googleUser = {
+            uid: 'g-redirect',
+            email: 'river@gmail.com',
+            emailVerified: true,
+            isAnonymous: false,
+            displayName: 'River',
+            providerData: [{ providerId: 'google.com' }]
+        };
+        const { AppAuth, storage } = loadAuth({
+            redirectUser: googleUser,
+            users: { 'g-redirect': { uid: 'g-redirect', displayName: 'River', nameKey: 'river' } }
+        });
+        const snap = await AppAuth.init();
+        ok(
+            'redirect Google sign-in is signed in without typing email',
+            snap.signedIn === true && snap.hasGoogle === true && snap.email === 'river@gmail.com',
+            JSON.stringify(snap)
+        );
+        ok(
+            'redirect Google sign-in remembers the email for next time',
+            storage.getItem('pst_google_login_hint') === 'river@gmail.com',
+            storage.getItem('pst_google_login_hint')
+        );
+    }
+
+    {
+        const passwordUser = {
+            uid: 'p-redirect',
+            email: 'river@gmail.com',
+            emailVerified: true,
+            isAnonymous: false,
+            displayName: 'River',
+            providerData: [{ providerId: 'password' }]
+        };
+        const pendingCred = { providerId: 'google.com', id: 'from-redirect' };
+        const redirectErr = new Error('exists');
+        redirectErr.code = 'auth/account-exists-with-different-credential';
+        redirectErr.email = 'river@gmail.com';
+        redirectErr.credential = pendingCred;
+        const { AppAuth, linkedCredential } = loadAuth({
+            user: passwordUser,
+            signedOut: true,
+            redirectError: redirectErr,
+            signInMethods: ['password'],
+            users: { 'p-redirect': { uid: 'p-redirect', displayName: 'River', nameKey: 'river' } }
+        });
+        const errors = [];
+        AppAuth.on('error', (msg) => errors.push(msg));
+        const snap = await AppAuth.init();
+        ok(
+            'redirect account-exists keeps the user signed out',
+            snap.signedIn === false && snap.pendingLinkEmail === 'river@gmail.com',
+            JSON.stringify(snap)
+        );
+        ok(
+            'redirect account-exists asks for the password',
+            errors.some((msg) => /password/i.test(msg)),
+            JSON.stringify(errors)
+        );
+        const linked = await AppAuth.signInEmail('river@gmail.com', 'secret');
+        ok('redirect pending Google credential is linked after password', linkedCredential() === pendingCred, JSON.stringify(linkedCredential()));
+        ok('redirect linked account is treated as Google', linked.hasGoogle === true && linked.provider === 'google.com', JSON.stringify(linked));
     }
 
     if (failures.length) {
