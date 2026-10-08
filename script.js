@@ -1391,24 +1391,41 @@ function formatResultsForWhatsApp() {
     return lines.join('\n');
 }
 
-async function copyResultsToClipboard(button) {
-    const text = formatResultsForWhatsApp();
+function copyTextToClipboardSync(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.setAttribute('aria-hidden', 'true');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
     let copied = false;
     try {
-        await navigator.clipboard.writeText(text);
-        copied = true;
+        copied = document.execCommand('copy');
     } catch (e) {
+        copied = false;
+    }
+    document.body.removeChild(ta);
+    return copied;
+}
+
+async function copyResultsToClipboard(button) {
+    const text = formatResultsForWhatsApp();
+    // Sync copy first so iOS keeps the tap as a user gesture. Async clipboard
+    // can reject and then the fallback would run too late to be allowed.
+    let copied = copyTextToClipboardSync(text);
+    if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
         try {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.setAttribute('readonly', '');
-            ta.style.position = 'fixed';
-            ta.style.left = '-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            copied = document.execCommand('copy');
-            document.body.removeChild(ta);
-        } catch (err) {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+        } catch (e) {
             copied = false;
         }
     }
