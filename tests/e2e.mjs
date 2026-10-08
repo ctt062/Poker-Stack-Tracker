@@ -179,6 +179,7 @@ async function run() {
                 return {
                     pending: document.documentElement.classList.contains('auth-pending'),
                     display: style.display,
+                    lead: (document.getElementById('authGateLead') || {}).textContent || '',
                     google: (document.getElementById('authGoogleBtn') || {}).textContent || '',
                     apple: !!document.getElementById('authAppleBtn'),
                     email: !!document.getElementById('authEmail'),
@@ -195,6 +196,7 @@ async function run() {
             ok('auth gate pending with Firebase config', gate.pending);
             ok('auth gate visible', gate.display === 'flex', gate.display);
             ok('Google sign-in present', /google/i.test(gate.google), gate.google);
+            ok('sign-in lead tells Gmail users not to type a Google password', /google password/i.test(gate.lead), gate.lead);
             ok('Apple sign-in is not offered', gate.apple === false, JSON.stringify(gate));
             ok('email sign-in present', gate.email && gate.password, JSON.stringify(gate));
             ok('create account is a switch, not a shared submit', /create/i.test(gate.create) && gate.createPanelHidden === true, JSON.stringify(gate));
