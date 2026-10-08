@@ -1099,31 +1099,6 @@ function addPlayer(name, buyIn) {
     updateDisplay();
 }
 
-function addStack(playerId) {
-    if (!assertCanEdit()) return;
-    const player = gameState.players.find(p => p.id === playerId);
-    if (player) {
-        recordStackUndo(playerId, player.totalBuyIn);
-        player.totalBuyIn = money(player.totalBuyIn + gameState.stackAmount);
-        saveGameState();
-        updateDisplay();
-    }
-}
-
-function subtractStack(playerId) {
-    if (!assertCanEdit()) return;
-    const player = gameState.players.find(p => p.id === playerId);
-    if (player) {
-        recordStackUndo(playerId, player.totalBuyIn);
-        player.totalBuyIn = money(player.totalBuyIn - gameState.stackAmount);
-        if (player.totalBuyIn < 0) {
-            player.totalBuyIn = 0;
-        }
-        saveGameState();
-        updateDisplay();
-    }
-}
-
 function updateCashOut(playerId, amount) {
     if (!assertCanEdit()) return;
     const player = gameState.players.find(p => p.id === playerId);
@@ -1517,7 +1492,7 @@ function updateDisplay() {
         const empty = document.createElement('tr');
         empty.className = 'empty-players-row';
         const td = document.createElement('td');
-        td.colSpan = 6;
+        td.colSpan = 5;
         td.textContent = 'No players yet. Add someone to start tracking buy-ins.';
         empty.appendChild(td);
         playerTableBody.appendChild(empty);
@@ -1641,20 +1616,6 @@ function buildPlayerRow(player, editable) {
         buyInCell.textContent = `$${player.totalBuyIn.toFixed(2)}`;
     }
 
-    const stackCell = document.createElement('td');
-    const minusBtn = document.createElement('button');
-    minusBtn.className = 'btn btn-stack-minus';
-    minusBtn.textContent = '-';
-    minusBtn.disabled = !editable;
-    minusBtn.addEventListener('click', () => subtractStack(player.id));
-    const plusBtn = document.createElement('button');
-    plusBtn.className = 'btn btn-stack-plus';
-    plusBtn.textContent = '+';
-    plusBtn.disabled = !editable;
-    plusBtn.addEventListener('click', () => addStack(player.id));
-    stackCell.appendChild(minusBtn);
-    stackCell.appendChild(plusBtn);
-
     const cashOutCell = document.createElement('td');
     const cashOutInput = document.createElement('input');
     cashOutInput.type = 'number';
@@ -1681,7 +1642,6 @@ function buildPlayerRow(player, editable) {
 
     row.appendChild(nameCell);
     row.appendChild(buyInCell);
-    row.appendChild(stackCell);
     row.appendChild(cashOutCell);
     row.appendChild(pnlCell);
     row.appendChild(settleCell);
@@ -1707,17 +1667,15 @@ function buildHouseRow(house, editable) {
     badge.textContent = 'House';
     wrap.appendChild(nameSpan);
     wrap.appendChild(badge);
+    const note = document.createElement('span');
+    note.className = 'house-note';
+    note.textContent = house.kind === 'dealer' ? 'tip only' : 'pay only';
+    wrap.appendChild(note);
     nameCell.appendChild(wrap);
 
     const buyInCell = document.createElement('td');
     buyInCell.className = 'pnl-zero';
     buyInCell.textContent = '$0.00';
-
-    const stackCell = document.createElement('td');
-    const note = document.createElement('span');
-    note.className = 'house-note';
-    note.textContent = house.kind === 'dealer' ? 'tip only' : 'pay only';
-    stackCell.appendChild(note);
 
     const cashOutCell = document.createElement('td');
     const cashOutInput = document.createElement('input');
@@ -1746,7 +1704,6 @@ function buildHouseRow(house, editable) {
 
     row.appendChild(nameCell);
     row.appendChild(buyInCell);
-    row.appendChild(stackCell);
     row.appendChild(cashOutCell);
     row.appendChild(pnlCell);
     row.appendChild(settleCell);
@@ -2997,8 +2954,6 @@ function initRoomUI() {
 }
 
 // Expose for onclick handlers
-window.addStack = addStack;
-window.subtractStack = subtractStack;
 window.updateCashOut = updateCashOut;
 window.updateBuyIn = updateBuyIn;
 window.editPlayerName = editPlayerName;

@@ -11,7 +11,7 @@ A minimalist web application for tracking chip stacks during poker games.
 - **Sign-in**: When Firebase is configured, Google or email is required before the tracker. Continue with Google uses your Google session (no extra email code; Google already verified it). A Gmail password typed into the email form will not work. Create an email account with a unique display name, then verify the email before the tracker unlocks. If that Gmail already has a password, Google asks you to sign in with the password once to connect. Google users pick a display name if they do not have one yet. You can change it later in Settings. Nobody else can use that name until you change it
 - **Player Management**: Add players with their buy-in amounts. Tap a player's total buy-in to type a new amount
 - **Dealer and Host**: Always-on house rows (default $0, never negative) for tips and host pay. Count toward cash balance, not player count
-- **Stack Tracking**: Track total buy-ins with +/- stacks or by typing, plus undo for the last buy-in change
+- **Stack Tracking**: Tap a player's total buy-in to type a new amount, plus undo for the last buy-in change
 - **Cash Out Tracking**: Record cash-out amounts for each player
 - **P&L Calculation**: Automatic profit and loss calculation per player
 - **Balance Overview**: Buy-ins, player cash-outs, house take, and leftover
