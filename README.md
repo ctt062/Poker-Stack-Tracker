@@ -32,7 +32,7 @@ If `firebase-config.js` is empty, the app stays local with no account. When Fire
 
 1. Follow **[ROOM_SETUP.md](ROOM_SETUP.md)** (Google / email Auth + Firestore)
 2. Sign in with Google, or create an email account, verify the email, and set your display name
-3. **Room → Create room** (your unique display name is shown, not edited there), share the code. Limit: 3 rooms per account; rooms last 1 week then delete themselves
+3. **Room → Create room** (your unique display name is shown, not edited there), share the code. Limit: 3 rooms per account; rooms last 1 week then delete themselves. Leave keeps the code so you can rejoin; End room closes it for everyone
 4. Others sign in, **Join** as viewers; the room host uses **People** to allow edit when needed
 
 Product model: a **Room** is one live session (not a persistent Club). A Club layer can be added later on top of rooms.
