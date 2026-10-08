@@ -782,14 +782,17 @@ async function run() {
                 house: Array.from(document.querySelectorAll('.house-row .player-name')).map((el) => el.textContent),
                 houseBuyIn: Array.from(document.querySelectorAll('.house-row td:nth-child(2)')).map((el) => el.textContent),
                 rake: document.getElementById('rakeDisplay')?.textContent,
-                notes: Array.from(document.querySelectorAll('.house-row .house-note')).map((el) => el.textContent)
+                notes: Array.from(document.querySelectorAll('.house-row .house-note')).map((el) => el.textContent),
+                headers: Array.from(document.querySelectorAll('#playerTable thead th')).map((el) => el.textContent.trim()),
+                stackBtns: document.querySelectorAll('.btn-stack-plus, .btn-stack-minus').length
             }));
             ok('solo skips auth gate', solo.pending === false && solo.gateDisplay === 'none', JSON.stringify(solo));
             ok('account chip visible in solo', solo.account);
             ok('player count excludes house rows', solo.players === '0', solo.players);
             ok('dealer and host rows pinned at $0', solo.house.includes('Dealer') && solo.house.includes('Host') && solo.houseBuyIn.every((t) => t === '$0.00'), JSON.stringify(solo));
             ok('default rake is no rake', solo.rake === 'No rake', solo.rake);
-            ok('house rows have no plus/minus stack controls', solo.notes.includes('tip only') && solo.notes.includes('pay only'), JSON.stringify(solo.notes));
+            ok('stack control column is gone', !solo.headers.some((h) => /stack control/i.test(h)) && solo.stackBtns === 0 && solo.headers.length === 5, JSON.stringify(solo.headers));
+            ok('house rows keep tip/pay notes on the name', solo.notes.includes('tip only') && solo.notes.includes('pay only'), JSON.stringify(solo.notes));
             await shot(page, 'solo-house-rows.png');
 
             await addPlayer(page, 'Alice', 200);
@@ -1253,9 +1256,12 @@ async function run() {
             const mobile = await page.evaluate(() => ({
                 house: document.querySelectorAll('.house-row').length,
                 buyIn: document.querySelector('.buyin-amount')?.textContent,
-                rake: document.getElementById('rakeDisplay')?.textContent
+                rake: document.getElementById('rakeDisplay')?.textContent,
+                headers: Array.from(document.querySelectorAll('#playerTable thead th')).map((el) => el.textContent.trim()),
+                stackBtns: document.querySelectorAll('.btn-stack-plus, .btn-stack-minus').length
             }));
             ok('mobile tracker shows house rows and typed buy-in control', mobile.house === 2 && mobile.buyIn === '$200.00', JSON.stringify(mobile));
+            ok('mobile tracker has no stack control column', mobile.stackBtns === 0 && mobile.headers.length === 5 && !mobile.headers.some((h) => /stack/i.test(h)), JSON.stringify(mobile.headers));
         });
     } finally {
         await browser.close();

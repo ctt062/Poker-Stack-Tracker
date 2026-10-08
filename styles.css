@@ -417,14 +417,6 @@ body.compact-mode .btn-primary {
     padding: 6px 10px;
 }
 
-body.compact-mode .btn-stack-plus,
-body.compact-mode .btn-stack-minus {
-    padding: 3px 8px;
-    font-size: 13px;
-    min-width: 28px;
-    min-height: 28px;
-}
-
 body.compact-mode .btn-theme {
     width: 30px;
     height: 30px;
@@ -538,73 +530,36 @@ body.compact-mode table {
 
 body.compact-mode th:nth-child(1), /* Player Name */
 body.compact-mode td:nth-child(1) {
-    width: 18%;
+    width: 28%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-body.compact-mode th:nth-child(2), /* Total Buy-in */
-body.compact-mode td:nth-child(2) {
-    width: 16%;
+body.compact-mode tr.house-row td:nth-child(1) {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
 }
 
-body.compact-mode th:nth-child(3), /* Stack Control */
+body.compact-mode th:nth-child(2), /* Total Buy-in */
+body.compact-mode td:nth-child(2) {
+    width: 20%;
+}
+
+body.compact-mode th:nth-child(3), /* Cash Out */
 body.compact-mode td:nth-child(3) {
     width: 22%;
 }
 
-body.compact-mode th:nth-child(4), /* Cash Out */
+body.compact-mode th:nth-child(4), /* P&L */
 body.compact-mode td:nth-child(4) {
     width: 18%;
 }
 
-body.compact-mode th:nth-child(5), /* P&L */
+body.compact-mode th:nth-child(5), /* Paid */
 body.compact-mode td:nth-child(5) {
-    width: 16%;
-}
-
-body.compact-mode th:nth-child(6), /* Paid */
-body.compact-mode td:nth-child(6) {
-    width: 10%;
-}
-
-.btn-stack-minus,
-.btn-stack-plus {
-    color: white;
-    padding: 6px 14px;
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1;
-    margin-right: 6px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    min-width: 36px;
-    min-height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-}
-
-.btn-stack-minus {
-    background-color: var(--accent-warning);
-}
-
-.btn-stack-plus {
-    background-color: var(--accent-primary);
-    margin-right: 0;
-}
-
-.btn-stack-minus:hover {
-    background-color: #ea580c;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.btn-stack-plus:hover {
-    background-color: var(--accent-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    width: 12%;
 }
 
 .blind-display {
@@ -1065,13 +1020,13 @@ tbody td {
 
     body.compact-mode th:nth-child(1),
     body.compact-mode td:nth-child(1) {
-        width: 20%;
+        width: 28%;
         font-size: 9px;
     }
 
     body.compact-mode th:nth-child(2),
     body.compact-mode td:nth-child(2) {
-        width: 14%;
+        width: 18%;
         font-size: 8px;
     }
 
@@ -1082,18 +1037,13 @@ tbody td {
 
     body.compact-mode th:nth-child(4),
     body.compact-mode td:nth-child(4) {
-        width: 16%;
+        width: 18%;
+        font-size: 9px;
     }
 
     body.compact-mode th:nth-child(5),
     body.compact-mode td:nth-child(5) {
-        width: 16%;
-        font-size: 9px;
-    }
-
-    body.compact-mode th:nth-child(6),
-    body.compact-mode td:nth-child(6) {
-        width: 12%;
+        width: 14%;
         font-size: 8px;
         padding: 6px 2px;
     }
@@ -1104,20 +1054,6 @@ tbody td {
         padding: 2px 3px;
         font-size: 9px;
         border-radius: 3px;
-    }
-
-    body.compact-mode .btn-stack-plus,
-    body.compact-mode .btn-stack-minus {
-        padding: 2px 5px;
-        font-size: 11px;
-        border-radius: 3px;
-        margin-right: 2px;
-        min-width: 24px;
-        min-height: 24px;
-    }
-
-    body.compact-mode .btn-stack-plus {
-        margin-right: 0;
     }
 
     body.compact-mode .control-group input {
@@ -1598,7 +1534,7 @@ body:not(.dark-mode) .house-badge {
 }
 
 .house-note {
-    font-size: 12px;
+    font-size: 11px;
     opacity: 0.6;
     font-weight: 500;
 }
