@@ -879,6 +879,7 @@ tbody td {
     display: flex;
     gap: 12px;
     justify-content: space-between;
+    flex-wrap: wrap;
     margin-top: 8px;
 }
 

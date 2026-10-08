@@ -231,8 +231,8 @@ async function run() {
                     displayName: !!document.getElementById('authCreateDisplayName'),
                     submit: (document.getElementById('authCreateSubmit') || {}).textContent || '',
                     back: (document.getElementById('authShowSignIn') || {}).textContent || '',
-                    googleOnCreate: document.getElementById('authGoogleBtn')
-                        && document.getElementById('authGoogleBtn').offsetParent !== null
+                    googleOnCreate: !!(document.getElementById('authCreateGoogleBtn')
+                        && document.getElementById('authCreateGoogleBtn').offsetParent !== null)
                 };
             });
             ok('create panel is its own step', createPanel.createVisible && createPanel.signInHidden === true, JSON.stringify(createPanel));
@@ -240,7 +240,7 @@ async function run() {
             ok('create asks for password, confirm, and display name', createPanel.password && createPanel.confirm && createPanel.displayName, JSON.stringify(createPanel));
             ok('create submit is Create account', /create account/i.test(createPanel.submit), createPanel.submit);
             ok('create can switch back to sign in', /sign in/i.test(createPanel.back), createPanel.back);
-            ok('Google stays on the sign-in panel', createPanel.googleOnCreate === false, JSON.stringify(createPanel));
+            ok('Google is on the create panel', createPanel.googleOnCreate === true, JSON.stringify(createPanel));
             await shot(page, 'auth-create-panel.png');
 
             await page.$eval('#authCreatePassword', (el) => { el.value = 'secret1'; });

@@ -8,7 +8,7 @@ A minimalist web application for tracking chip stacks during poker games.
 
 - **Blind Structure**: Set small and big blind amounts, or pick a 0.5/1, 1/2, 1/3, 2/5 preset (sets the default stack too)
 - **Rake**: Mark a session as no-rake or rake (time, pot % with cap, flat fee, or a custom note). Chosen when creating a room and from the session chip in solo
-- **Sign-in**: When Firebase is configured, Google or email is required before the tracker. Create an email account with a unique display name, then verify the email before the tracker unlocks. Google users pick a display name if they do not have one yet. You can change it later in Settings. Nobody else can use that name until you change it
+- **Sign-in**: When Firebase is configured, Google or email is required before the tracker. Continue with Google uses your Google session (no extra email code; Google already verified it). Create an email account with a unique display name, then verify the email before the tracker unlocks. If that Gmail already has a password, Google asks you to sign in with the password once to connect. Google users pick a display name if they do not have one yet. You can change it later in Settings. Nobody else can use that name until you change it
 - **Player Management**: Add players with their buy-in amounts. Tap a player's total buy-in to type a new amount
 - **Dealer and Host**: Always-on house rows (default $0, never negative) for tips and host pay. Count toward cash balance, not player count
 - **Stack Tracking**: Track total buy-ins with +/- stacks or by typing, plus undo for the last buy-in change

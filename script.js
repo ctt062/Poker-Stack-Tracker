@@ -2361,6 +2361,10 @@ function updateAccountChip() {
         : 'Settings: display name';
     const signOutBtn = document.getElementById('signOutBtn');
     if (signOutBtn) signOutBtn.hidden = !snap.signedIn;
+    const connectGoogleBtn = document.getElementById('connectGoogleBtn');
+    if (connectGoogleBtn) {
+        connectGoogleBtn.hidden = !snap.signedIn || snap.hasGoogle === true || snap.provider === 'google.com';
+    }
     const providerLine = document.getElementById('accountProviderLine');
     if (providerLine) {
         if (snap.signedIn) {
@@ -2402,8 +2406,12 @@ function startVerifyPoll() {
 
 function needsEmailVerification(snap) {
     if (!snap || !snap.signedIn) return false;
-    if (snap.provider === 'google.com') return false;
+    if (snap.provider === 'google.com' || snap.hasGoogle) return false;
     return snap.emailVerified !== true;
+}
+
+function currentAuthEmailHint() {
+    return readAuthInput('authEmail') || readAuthInput('authCreateEmail') || '';
 }
 
 function showAuthPanel(which) {
@@ -2487,6 +2495,7 @@ function applyAuthSnapshot(snap) {
     }
     if (!snap.signedIn) {
         lockAppForAuth();
+        if (snap.pendingLinkEmail) writeAuthInput('authEmail', snap.pendingLinkEmail);
         return;
     }
     if (needsEmailVerification(snap)) {
@@ -2525,13 +2534,27 @@ async function handleAuthAction(fn, btn) {
         applyAuthSnapshot(snap || (window.AppAuth && AppAuth.snapshot()));
     } catch (e) {
         setAuthError((e && e.message) || 'Sign-in failed');
+        if (e && e.email) {
+            writeAuthInput('authEmail', e.email);
+            const create = document.getElementById('authCreatePanel');
+            if (create && !create.hidden) showAuthPanel('signin');
+        }
     } finally {
         if (btn) btn.disabled = false;
     }
 }
 
+function startGoogleSignIn(btn, pickAccount) {
+    return handleAuthAction(() => AppAuth.signInGoogle({
+        pickAccount: !!pickAccount,
+        loginHint: currentAuthEmailHint()
+    }), btn);
+}
+
 function initAuthUi() {
     const googleBtn = document.getElementById('authGoogleBtn');
+    const createGoogleBtn = document.getElementById('authCreateGoogleBtn');
+    const connectGoogleBtn = document.getElementById('connectGoogleBtn');
     const emailForm = document.getElementById('authEmailForm');
     const createLink = document.getElementById('authEmailCreate');
     const createForm = document.getElementById('authCreateForm');
@@ -2547,7 +2570,17 @@ function initAuthUi() {
     const signOutBtn = document.getElementById('signOutBtn');
 
     if (googleBtn) {
-        googleBtn.addEventListener('click', () => handleAuthAction(() => AppAuth.signInGoogle(), googleBtn));
+        googleBtn.addEventListener('click', () => startGoogleSignIn(googleBtn, false));
+    }
+    if (createGoogleBtn) {
+        createGoogleBtn.addEventListener('click', () => startGoogleSignIn(createGoogleBtn, false));
+    }
+    if (connectGoogleBtn) {
+        connectGoogleBtn.addEventListener('click', () => {
+            handleAuthAction(() => AppAuth.linkGoogle({
+                loginHint: (AppAuth.snapshot().email) || currentAuthEmailHint()
+            }), connectGoogleBtn);
+        });
     }
     if (emailForm) {
         emailForm.addEventListener('submit', (e) => {
@@ -2636,7 +2669,7 @@ function initAuthUi() {
         verifySignOut.addEventListener('click', async () => {
             setAuthError('');
             stopVerifyPoll();
-            if (window.AppAuth) await AppAuth.signOut();
+            if (window.AppAuth) await AppAuth.signOut({ pickNextGoogleAccount: true });
             applyAuthSnapshot(window.AppAuth ? AppAuth.snapshot() : { configured: false });
         });
     }
@@ -2658,7 +2691,7 @@ function initAuthUi() {
     if (nameSignOut) {
         nameSignOut.addEventListener('click', async () => {
             setAuthError('');
-            if (window.AppAuth) await AppAuth.signOut();
+            if (window.AppAuth) await AppAuth.signOut({ pickNextGoogleAccount: true });
             applyAuthSnapshot(window.AppAuth ? AppAuth.snapshot() : { configured: false });
         });
     }
@@ -2733,7 +2766,7 @@ async function bootApp() {
     }
 
     lockAppForAuth();
-    const providerBtns = ['authGoogleBtn', 'authEmailSignIn', 'authCreateSubmit']
+    const providerBtns = ['authGoogleBtn', 'authCreateGoogleBtn', 'authEmailSignIn', 'authCreateSubmit']
         .map((id) => document.getElementById(id))
         .filter(Boolean);
     providerBtns.forEach((btn) => { btn.disabled = true; });
