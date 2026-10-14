@@ -623,6 +623,14 @@ if (roomRakeType) {
     roomRakeType.addEventListener('change', () => syncRakeFieldVisibility(document.getElementById('roomRakeGroup')));
 }
 
+document.querySelectorAll('input[name="homeRakeEnabled"]').forEach((el) => {
+    el.addEventListener('change', () => syncRakeFieldVisibility(document.getElementById('homeRakeGroup')));
+});
+const homeRakeType = document.getElementById('homeRakeType');
+if (homeRakeType) {
+    homeRakeType.addEventListener('change', () => syncRakeFieldVisibility(document.getElementById('homeRakeGroup')));
+}
+
 document.querySelectorAll('.preset-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
         if (!assertCanEdit()) return;
@@ -765,16 +773,18 @@ function rakeModalHide() {
 }
 
 function isRakeOn(scope) {
-    const checked = scope && scope.querySelector('input[name="rakeEnabled"]:checked, input[name="roomRakeEnabled"]:checked');
+    const checked = scope && scope.querySelector(
+        'input[name="rakeEnabled"]:checked, input[name="roomRakeEnabled"]:checked, input[name="homeRakeEnabled"]:checked'
+    );
     return !!(checked && checked.value === 'yes');
 }
 
 function syncRakeFieldVisibility(scope) {
     if (!scope) return;
     const enabled = isRakeOn(scope);
-    const details = scope.querySelector('.rake-details, #rakeStructureFields, #roomRakeDetails');
+    const details = scope.querySelector('.rake-details, #rakeStructureFields, #roomRakeDetails, #homeRakeDetails');
     if (details) details.hidden = !enabled;
-    const typeSelect = scope.querySelector('#rakeType, #roomRakeType, select[data-rake-type]');
+    const typeSelect = scope.querySelector('#rakeType, #roomRakeType, #homeRakeType, select[data-rake-type]');
     const type = typeSelect ? typeSelect.value : 'time';
     scope.querySelectorAll('[data-rake-fields]').forEach((el) => {
         el.hidden = el.getAttribute('data-rake-fields') !== type;
@@ -784,23 +794,30 @@ function syncRakeFieldVisibility(scope) {
 function fillRakeFields(rake, scope) {
     if (!scope) return;
     const on = rake && rake.enabled && rake.type !== 'none';
-    const enabledInputs = scope.querySelectorAll('input[name="rakeEnabled"], input[name="roomRakeEnabled"]');
+    const enabledInputs = scope.querySelectorAll(
+        'input[name="rakeEnabled"], input[name="roomRakeEnabled"], input[name="homeRakeEnabled"]'
+    );
     enabledInputs.forEach((el) => {
         el.checked = on ? el.value === 'yes' : el.value === 'no';
     });
-    const typeSelect = scope.querySelector('#rakeType, #roomRakeType');
+    const typeSelect = scope.querySelector('#rakeType, #roomRakeType, #homeRakeType');
     if (typeSelect) typeSelect.value = on && rake.type !== 'none' ? rake.type : 'time';
     const map = {
         rakePerHour: rake.perPlayerPerHour,
         roomRakePerHour: rake.perPlayerPerHour,
+        homeRakePerHour: rake.perPlayerPerHour,
         rakePercent: rake.percent,
         roomRakePercent: rake.percent,
+        homeRakePercent: rake.percent,
         rakeCap: rake.cap,
         roomRakeCap: rake.cap,
+        homeRakeCap: rake.cap,
         rakePerPlayer: rake.perPlayer,
         roomRakePerPlayer: rake.perPlayer,
+        homeRakePerPlayer: rake.perPlayer,
         rakeNote: rake.note,
-        roomRakeNote: rake.note
+        roomRakeNote: rake.note,
+        homeRakeNote: rake.note
     };
     Object.keys(map).forEach((id) => {
         const el = scope.querySelector('#' + id);
@@ -811,7 +828,7 @@ function fillRakeFields(rake, scope) {
 
 function readRakeFields(prefix, scope) {
     const on = isRakeOn(scope);
-    const typeSelect = scope.querySelector('#rakeType, #roomRakeType');
+    const typeSelect = scope.querySelector('#rakeType, #roomRakeType, #homeRakeType');
     const type = on ? ((typeSelect && typeSelect.value) || 'time') : 'none';
     const val = (id, fallback) => {
         const el = scope.querySelector('#' + id);
@@ -819,14 +836,15 @@ function readRakeFields(prefix, scope) {
         if (el.type === 'text') return String(el.value || '').slice(0, 80);
         return Math.max(0, toNumber(el.value, fallback));
     };
+    const idPrefix = prefix === 'home' ? 'home' : prefix ? 'room' : '';
     return normalizeRake({
         enabled: on,
         type,
-        perPlayerPerHour: val(prefix ? 'roomRakePerHour' : 'rakePerHour', 5),
-        percent: val(prefix ? 'roomRakePercent' : 'rakePercent', 5),
-        cap: val(prefix ? 'roomRakeCap' : 'rakeCap', 5),
-        perPlayer: val(prefix ? 'roomRakePerPlayer' : 'rakePerPlayer', 10),
-        note: val(prefix ? 'roomRakeNote' : 'rakeNote', '')
+        perPlayerPerHour: val(idPrefix ? idPrefix + 'RakePerHour' : 'rakePerHour', 5),
+        percent: val(idPrefix ? idPrefix + 'RakePercent' : 'rakePercent', 5),
+        cap: val(idPrefix ? idPrefix + 'RakeCap' : 'rakeCap', 5),
+        perPlayer: val(idPrefix ? idPrefix + 'RakePerPlayer' : 'rakePerPlayer', 10),
+        note: val(idPrefix ? idPrefix + 'RakeNote' : 'rakeNote', '')
     });
 }
 
@@ -1081,7 +1099,9 @@ function editHouseName(houseId) {
 
 function roomRoleLabel(role) {
     if (role === 'host') return 'Room host';
-    return role;
+    if (role === 'editor') return 'Editor';
+    if (role === 'viewer') return 'Viewer';
+    return role || '';
 }
 
 function addPlayer(name, buyIn) {
@@ -2080,7 +2100,7 @@ function updateRoomStatusBar(snap) {
             roleBadge.textContent = '';
         }
         if (peopleBtn) peopleBtn.hidden = true;
-        if (roomBtn) roomBtn.textContent = 'Room';
+        if (roomBtn) roomBtn.textContent = 'Share';
         return;
     }
 
@@ -2097,7 +2117,7 @@ function updateRoomStatusBar(snap) {
         roleBadge.dataset.role = snap.role;
     }
     if (peopleBtn) peopleBtn.hidden = false;
-    if (roomBtn) roomBtn.textContent = 'Room';
+    if (roomBtn) roomBtn.textContent = 'Manage';
 }
 
 function syncRoomModalPanels(snap) {
@@ -2304,18 +2324,25 @@ function setAuthError(msg) {
 }
 
 function updateAccountChip() {
-    const btn = document.getElementById('accountBtn');
-    const nameEl = document.getElementById('accountChipName');
-    const avatar = document.getElementById('accountAvatar');
-    if (!btn || !nameEl) return;
     const snap = window.AppAuth ? AppAuth.snapshot() : { signedIn: false, displayName: preferredDisplayName() };
     const name = snap.displayName || (snap.signedIn ? (snap.email || 'Account') : 'You');
-    nameEl.textContent = name;
-    if (avatar) avatar.textContent = (name.trim().charAt(0) || '?').toUpperCase();
-    btn.hidden = false;
-    btn.title = snap.signedIn
+    const title = snap.signedIn
         ? `Signed in${snap.providerLabel ? ' with ' + snap.providerLabel : ''}. Open Settings to change your unique display name.`
         : 'Settings: display name';
+    const initial = (name.trim().charAt(0) || '?').toUpperCase();
+    [
+        { btn: 'accountBtn', name: 'accountChipName', avatar: 'accountAvatar' },
+        { btn: 'homeAccountBtn', name: 'homeAccountChipName', avatar: 'homeAccountAvatar' }
+    ].forEach((ids) => {
+        const btn = document.getElementById(ids.btn);
+        const nameEl = document.getElementById(ids.name);
+        const avatar = document.getElementById(ids.avatar);
+        if (!btn || !nameEl) return;
+        nameEl.textContent = name;
+        if (avatar) avatar.textContent = initial;
+        btn.hidden = false;
+        btn.title = title;
+    });
     const signOutBtn = document.getElementById('signOutBtn');
     if (signOutBtn) signOutBtn.hidden = !snap.signedIn;
     const connectGoogleBtn = document.getElementById('connectGoogleBtn');
@@ -2396,11 +2423,24 @@ function showAuthPanel(which) {
     else if (err && panel) panel.appendChild(err);
 }
 
+function openAccountModal() {
+    const input = document.getElementById('accountDisplayName');
+    if (input) input.value = preferredDisplayName();
+    updateAccountChip();
+    const modal = document.getElementById('accountModal');
+    if (modal) modal.style.display = 'block';
+    if (input) input.focus();
+}
+
 function lockAppForAuth() {
     stopVerifyPoll();
     const create = document.getElementById('authCreatePanel');
     const preserveCreate = !!(create && !create.hidden && !appUnlocked);
     appUnlocked = false;
+    document.documentElement.classList.remove('app-home');
+    document.body.classList.remove('app-home');
+    const home = document.getElementById('homeScreen');
+    if (home) home.hidden = true;
     document.documentElement.classList.add('auth-pending');
     document.body.classList.add('auth-pending');
     writeAuthInput('authDisplayNameInput', '');
@@ -2415,21 +2455,197 @@ function lockAppForAuth() {
     showAuthPanel('signin');
 }
 
+function setHomeRoomError(msg) {
+    const el = document.getElementById('homeRoomError');
+    if (!el) return;
+    if (msg) {
+        el.textContent = msg;
+        el.hidden = false;
+    } else {
+        el.textContent = '';
+        el.hidden = true;
+    }
+}
+
+function formatExpiryHint(ms) {
+    if (!ms) return '';
+    const days = Math.max(0, Math.ceil((ms - Date.now()) / 86400000));
+    if (days <= 0) return 'Expires today';
+    if (days === 1) return 'Expires in 1 day';
+    return 'Expires in ' + days + ' days';
+}
+
+function blankRoomGame(rake) {
+    return {
+        blindStructure: { small: 1, big: 2 },
+        stackAmount: 200,
+        players: [],
+        sessionName: 'Session Name',
+        bankerName: 'Banker',
+        rake: rake || defaultRake(),
+        house: defaultHouse(),
+        clock: defaultClock()
+    };
+}
+
+function showTracker() {
+    document.documentElement.classList.remove('app-home');
+    document.body.classList.remove('app-home');
+    const home = document.getElementById('homeScreen');
+    if (home) home.hidden = true;
+    updateAccountChip();
+    updateDisplay();
+}
+
+function showHome() {
+    stopVerifyPoll();
+    document.documentElement.classList.remove('auth-pending');
+    document.body.classList.remove('auth-pending');
+    document.documentElement.classList.add('app-home');
+    document.body.classList.add('app-home');
+    const home = document.getElementById('homeScreen');
+    if (home) home.hidden = false;
+    ['roomModal', 'peopleModal'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    updateAccountChip();
+    initRoomUI();
+    refreshHomeRooms();
+}
+
+function closeTrackerModals() {
+    ['roomModal', 'peopleModal', 'accountModal'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+}
+
+async function goHome() {
+    setHomeRoomError('');
+    closeTrackerModals();
+    if (window.RoomSync && typeof RoomSync.detachRoom === 'function' && RoomSync.isInRoom()) {
+        try { await RoomSync.detachRoom(); } catch (e) { console.warn(e); }
+    }
+    showHome();
+}
+
+async function openSolo() {
+    if (window.RoomSync && typeof RoomSync.detachRoom === 'function' && RoomSync.isInRoom()) {
+        try { await RoomSync.detachRoom(); } catch (e) { console.warn(e); }
+    }
+    showTracker();
+}
+
+function renderHomeRoomList(rooms) {
+    const list = document.getElementById('homeRoomList');
+    const empty = document.getElementById('homeRoomEmpty');
+    if (!list) return;
+    list.innerHTML = '';
+    const items = Array.isArray(rooms) ? rooms : [];
+    if (empty) empty.hidden = items.length > 0;
+    items.forEach((room) => {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'home-room-row';
+        const title = document.createElement('span');
+        title.className = 'home-room-row-title';
+        title.textContent = room.sessionName || 'Untitled session';
+        const meta = document.createElement('span');
+        meta.className = 'home-room-row-meta';
+        const bits = [
+            room.code ? 'Code ' + room.code : '',
+            roomRoleLabel(room.role),
+            formatExpiryHint(room.expiresAt)
+        ].filter(Boolean);
+        meta.textContent = bits.join(' · ');
+        btn.appendChild(title);
+        btn.appendChild(meta);
+        btn.addEventListener('click', () => openRoomFromList(room.roomId));
+        li.appendChild(btn);
+        list.appendChild(li);
+    });
+}
+
+async function refreshHomeRooms() {
+    const panel = document.getElementById('homeRoomsPanel');
+    const configured = !!(window.RoomSync && RoomSync.isConfigured());
+    const lead = document.getElementById('homeLead');
+    if (lead) {
+        lead.textContent = configured
+            ? 'Solo stays on this device. Rooms stay in sync until they expire (1 week).'
+            : 'Solo stays on this device.';
+    }
+    if (panel) panel.hidden = !configured;
+    if (!configured) {
+        renderHomeRoomList([]);
+        const empty = document.getElementById('homeRoomEmpty');
+        if (empty) empty.hidden = true;
+        return;
+    }
+    if (typeof RoomSync.listMyRooms !== 'function') {
+        renderHomeRoomList([]);
+        return;
+    }
+    try {
+        const rooms = await RoomSync.listMyRooms();
+        renderHomeRoomList(rooms);
+    } catch (e) {
+        console.warn(e);
+        setHomeRoomError((e && e.message) || 'Could not load rooms.');
+        renderHomeRoomList([]);
+    }
+}
+
+async function openRoomFromList(roomId) {
+    setHomeRoomError('');
+    if (!window.RoomSync || typeof RoomSync.enterRoom !== 'function') return;
+    const name = preferredDisplayName();
+    if (!name) {
+        setHomeRoomError('Set a unique display name in Settings first.');
+        return;
+    }
+    pendingSoloStash = true;
+    try {
+        await RoomSync.enterRoom(roomId);
+        clearUndo();
+        updateRoomStatusBar(RoomSync.getRoomSnapshot());
+        showTracker();
+    } catch (e) {
+        pendingSoloStash = false;
+        setHomeRoomError((e && e.message) || 'Could not open that room.');
+        refreshHomeRooms();
+    }
+}
+
 function restoreJoinedRoom() {
-    if (!window.RoomSync) return;
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
+    const homeJoin = document.getElementById('homeJoinRoomCode');
+    const modalJoin = document.getElementById('joinRoomCode');
+    if (roomParam) {
+        const code = roomParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+        if (homeJoin) homeJoin.value = code;
+        if (modalJoin) modalJoin.value = code;
+    }
+    if (!window.RoomSync || typeof RoomSync.tryRestoreRoom !== 'function') {
+        showHome();
+        return;
+    }
     RoomSync.tryRestoreRoom().then((snap) => {
         if (snap) {
             updateRoomStatusBar(snap);
             applyEditabilityUI();
+            showTracker();
             return;
         }
         restoreSoloSnapshot();
-        if (roomParam && RoomSync.isConfigured()) {
-            openRoomModal();
-        }
-    }).catch((e) => console.warn(e));
+        showHome();
+    }).catch((e) => {
+        console.warn(e);
+        showHome();
+    });
 }
 
 function unlockApp() {
@@ -2652,16 +2868,9 @@ function initAuthUi() {
             applyAuthSnapshot(window.AppAuth ? AppAuth.snapshot() : { configured: false });
         });
     }
-    if (accountBtn) {
-        accountBtn.addEventListener('click', () => {
-            const input = document.getElementById('accountDisplayName');
-            if (input) input.value = preferredDisplayName();
-            updateAccountChip();
-            const modal = document.getElementById('accountModal');
-            if (modal) modal.style.display = 'block';
-            if (input) input.focus();
-        });
-    }
+    const homeAccountBtn = document.getElementById('homeAccountBtn');
+    if (accountBtn) accountBtn.addEventListener('click', openAccountModal);
+    if (homeAccountBtn) homeAccountBtn.addEventListener('click', openAccountModal);
     if (accountForm) {
         accountForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -2749,9 +2958,16 @@ function initRoomUI() {
     const endBtn = document.getElementById('endRoomBtn');
     const copyBtn = document.getElementById('copyRoomCodeBtn');
     const joinCodeInput = document.getElementById('joinRoomCode');
+    const homeSoloBtn = document.getElementById('homeSoloBtn');
+    const homeCreateBtn = document.getElementById('homeCreateRoomBtn');
+    const homeJoinBtn = document.getElementById('homeJoinRoomBtn');
+    const homeJoinInput = document.getElementById('homeJoinRoomCode');
+    const roomsHomeBtn = document.getElementById('roomsHomeBtn');
 
     if (roomBtn) roomBtn.addEventListener('click', openRoomModal);
     if (peopleBtn) peopleBtn.addEventListener('click', openPeopleModal);
+    if (roomsHomeBtn) roomsHomeBtn.addEventListener('click', () => { goHome(); });
+    if (homeSoloBtn) homeSoloBtn.addEventListener('click', () => { openSolo(); });
 
     if (createBtn) {
         createBtn.addEventListener('click', async () => {
@@ -2826,6 +3042,81 @@ function initRoomUI() {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 joinBtn?.click();
+            }
+        });
+    }
+
+    if (homeCreateBtn) {
+        homeCreateBtn.addEventListener('click', async () => {
+            setHomeRoomError('');
+            if (!window.RoomSync || !RoomSync.isConfigured()) {
+                setHomeRoomError('Firebase is not configured. See ROOM_SETUP.md.');
+                return;
+            }
+            const name = preferredDisplayName();
+            if (!name) {
+                setHomeRoomError('Set a unique display name in Settings before creating a room.');
+                return;
+            }
+            homeCreateBtn.disabled = true;
+            pendingSoloStash = true;
+            try {
+                const blank = blankRoomGame(readRakeFields('home', document.getElementById('homeRakeGroup')));
+                await RoomSync.createRoom(name, blank);
+                showTracker();
+            } catch (e) {
+                pendingSoloStash = false;
+                console.error(e);
+                setHomeRoomError(e.message || 'Could not create room');
+            } finally {
+                homeCreateBtn.disabled = false;
+            }
+        });
+    }
+
+    if (homeJoinBtn) {
+        homeJoinBtn.addEventListener('click', async () => {
+            setHomeRoomError('');
+            if (!window.RoomSync || !RoomSync.isConfigured()) {
+                setHomeRoomError('Firebase is not configured. See ROOM_SETUP.md.');
+                return;
+            }
+            const name = preferredDisplayName();
+            const code = homeJoinInput?.value || '';
+            if (!name) {
+                setHomeRoomError('Set a unique display name in Settings before joining.');
+                return;
+            }
+            if (!code.trim()) {
+                setHomeRoomError('Enter a room code.');
+                homeJoinInput?.focus();
+                return;
+            }
+            homeJoinBtn.disabled = true;
+            pendingSoloStash = true;
+            try {
+                await RoomSync.joinRoom(code, name);
+                clearUndo();
+                updateRoomStatusBar(RoomSync.getRoomSnapshot());
+                showTracker();
+            } catch (e) {
+                console.error(e);
+                setHomeRoomError(e.message || 'Could not join room');
+            } finally {
+                if (!window.RoomSync || !RoomSync.isInRoom()) pendingSoloStash = false;
+                homeJoinBtn.disabled = false;
+            }
+        });
+    }
+
+    if (homeJoinInput) {
+        homeJoinInput.addEventListener('input', () => {
+            homeJoinInput.value = homeJoinInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        });
+        homeJoinInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                homeJoinBtn?.click();
             }
         });
     }
@@ -2920,12 +3211,17 @@ function initRoomUI() {
             if (lastRoomStatus === 'ended') {
                 localStorage.removeItem(SOLO_BACKUP_KEY);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+                showTracker();
             } else {
                 restoreSoloSnapshot();
+                showHome();
             }
             lastRoomStatus = null;
         } else {
             lastRoomStatus = snap.status || 'active';
+            if (document.documentElement.classList.contains('app-home')) {
+                showTracker();
+            }
         }
 
         // Room snapshots also fire on presence heartbeats; rebuilding the table

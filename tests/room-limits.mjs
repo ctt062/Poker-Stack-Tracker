@@ -231,6 +231,11 @@ async function run() {
             !!(users[uid] && users[uid].createdRooms && users[uid].createdRooms[snap.roomId] === true),
             JSON.stringify(users[uid])
         );
+        ok(
+            'create room records joinedRooms for the host',
+            !!(users[uid] && users[uid].joinedRooms && users[uid].joinedRooms[snap.roomId] === true),
+            JSON.stringify(users[uid])
+        );
         const ttl = created.expiresAt instanceof Date
             ? created.expiresAt.getTime()
             : Date.parse(created.expiresAt);
@@ -244,7 +249,7 @@ async function run() {
 
     {
         const rooms = { r1: liveRoom('host', '0421') };
-        const { RoomSync } = loadRoom({
+        const { RoomSync, users } = loadRoom({
             uid: 'bob',
             rooms,
             roomCodes: { '0421': { roomId: 'r1' } },
@@ -255,6 +260,11 @@ async function run() {
             'join accepts a 4-digit code',
             !!(snap && snap.roomId === 'r1' && snap.code === '0421'),
             JSON.stringify(snap)
+        );
+        ok(
+            'join records joinedRooms on the user',
+            !!(users.bob && users.bob.joinedRooms && users.bob.joinedRooms.r1 === true),
+            JSON.stringify(users.bob)
         );
     }
 
@@ -380,6 +390,139 @@ async function run() {
             'host can rejoin with the same code after leaving',
             !!(again && again.roomId === roomId && again.role === 'host' && again.code === code),
             JSON.stringify(again)
+        );
+    }
+
+    {
+        const uid = 'alice';
+        const rooms = {
+            hosted: Object.assign(liveRoom(uid, '1111'), {
+                game: { sessionName: 'Hosted night' },
+                updatedAt: 30
+            }),
+            joined: Object.assign(liveRoom('host', '2222'), {
+                participants: {
+                    host: { displayName: 'Host', role: 'host', lastSeen: Date.now(), joinedAt: 1 },
+                    [uid]: { displayName: 'Alice', role: 'viewer', lastSeen: Date.now(), joinedAt: 2 }
+                },
+                game: { sessionName: 'Joined night' },
+                updatedAt: 40
+            }),
+            ended: Object.assign(liveRoom(uid, '3333'), { status: 'ended' }),
+            expired: Object.assign(liveRoom(uid, '4444'), { expiresAt: Date.now() - 1000 }),
+            abandoned: Object.assign(liveRoom(uid, '5555'), { status: 'abandoned' }),
+            left: Object.assign(liveRoom('host', '6666'), {
+                participants: {
+                    host: { displayName: 'Host', role: 'host', lastSeen: Date.now(), joinedAt: 1 }
+                }
+            })
+        };
+        const { RoomSync, users } = loadRoom({
+            uid,
+            rooms,
+            users: {
+                [uid]: {
+                    uid,
+                    createdRooms: { hosted: true, ended: true, expired: true, abandoned: true },
+                    joinedRooms: { hosted: true, joined: true, ended: true, expired: true, abandoned: true, left: true, missing: true }
+                }
+            }
+        });
+        const listed = await RoomSync.listMyRooms();
+        const ids = listed.map((r) => r.roomId).sort();
+        ok(
+            'listMyRooms keeps live hosted and joined rooms',
+            ids.join(',') === 'hosted,joined',
+            JSON.stringify(listed)
+        );
+        ok(
+            'listMyRooms uses session name and role',
+            listed.some((r) => r.roomId === 'hosted' && r.sessionName === 'Hosted night' && r.role === 'host' && r.code === '1111')
+                && listed.some((r) => r.roomId === 'joined' && r.sessionName === 'Joined night' && r.role === 'viewer'),
+            JSON.stringify(listed)
+        );
+        ok(
+            'listMyRooms drops ended, expired, abandoned, left, and missing ids',
+            !users[uid].joinedRooms.ended
+                && !users[uid].joinedRooms.expired
+                && !users[uid].joinedRooms.abandoned
+                && !users[uid].joinedRooms.left
+                && !users[uid].joinedRooms.missing
+                && !users[uid].createdRooms.ended
+                && !users[uid].createdRooms.expired
+                && !users[uid].createdRooms.abandoned,
+            JSON.stringify(users[uid])
+        );
+        ok(
+            'listMyRooms sorts by recency',
+            listed[0].roomId === 'joined' && listed[1].roomId === 'hosted',
+            JSON.stringify(listed.map((r) => r.roomId))
+        );
+    }
+
+    {
+        const { RoomSync, rooms, uid, storage } = loadRoom();
+        const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
+        await RoomSync.detachRoom();
+        ok('detach clears local room id', storage.getItem('pst_room_id') == null);
+        ok('detach is not in a room', RoomSync.isInRoom() === false);
+        ok(
+            'detach keeps the participant',
+            !!(rooms[snap.roomId] && rooms[snap.roomId].participants && rooms[snap.roomId].participants[uid]),
+            JSON.stringify(rooms[snap.roomId] && rooms[snap.roomId].participants)
+        );
+        const listed = await RoomSync.listMyRooms();
+        ok(
+            'detached room still appears on the home list',
+            listed.some((r) => r.roomId === snap.roomId),
+            JSON.stringify(listed)
+        );
+        const entered = await RoomSync.enterRoom(snap.roomId);
+        ok(
+            'enterRoom reattaches without a code',
+            !!(entered && entered.roomId === snap.roomId && RoomSync.isInRoom()),
+            JSON.stringify(entered)
+        );
+        ok('enterRoom restores local room id', storage.getItem('pst_room_id') === snap.roomId);
+    }
+
+    {
+        const rooms = {
+            r1: Object.assign(liveRoom('host', '0421'), {
+                participants: {
+                    host: { displayName: 'Host', role: 'host', lastSeen: Date.now(), joinedAt: 1 },
+                    bob: { displayName: 'Bob', role: 'viewer', lastSeen: Date.now(), joinedAt: 2 }
+                }
+            })
+        };
+        const { RoomSync, users } = loadRoom({
+            uid: 'bob',
+            rooms,
+            roomCodes: { '0421': { roomId: 'r1' } },
+            users: { bob: { uid: 'bob', createdRooms: {}, joinedRooms: { r1: true } } }
+        });
+        await RoomSync.enterRoom('r1');
+        await RoomSync.leaveRoom();
+        ok(
+            'guest leave removes the participant',
+            !(rooms.r1.participants && rooms.r1.participants.bob),
+            JSON.stringify(rooms.r1.participants)
+        );
+        ok(
+            'guest leave drops joinedRooms',
+            !(users.bob.joinedRooms && users.bob.joinedRooms.r1),
+            JSON.stringify(users.bob)
+        );
+        let err = null;
+        try {
+            await RoomSync.enterRoom('r1');
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'enterRoom after leave requires joining with the code',
+            !!(err && /not in this room/i.test(String(err.message || ''))),
+            String((err && err.message) || err)
         );
     }
 

@@ -221,6 +221,44 @@
         }
     }
 
+    async function pruneUserRoomMaps(roomId, ownerUid) {
+        const owner = ownerUid || uid();
+        if (!owner || !roomId || !db) return;
+        try {
+            await userRefFor(owner).update({
+                [`createdRooms.${roomId}`]: fieldDelete(),
+                [`joinedRooms.${roomId}`]: fieldDelete()
+            });
+        } catch (e) {
+            console.warn('pruneUserRoomMaps', e);
+        }
+    }
+
+    async function rememberJoinedRoom(roomId) {
+        const myUid = uid();
+        if (!myUid || !roomId || !db) return;
+        try {
+            await userRefFor(myUid).set({ uid: myUid }, { merge: true });
+            await userRefFor(myUid).update({
+                [`joinedRooms.${roomId}`]: true
+            });
+        } catch (e) {
+            console.warn('rememberJoinedRoom', e);
+        }
+    }
+
+    async function forgetJoinedRoom(roomId) {
+        const myUid = uid();
+        if (!myUid || !roomId || !db) return;
+        try {
+            await userRefFor(myUid).update({
+                [`joinedRooms.${roomId}`]: fieldDelete()
+            });
+        } catch (e) {
+            console.warn('forgetJoinedRoom', e);
+        }
+    }
+
     async function purgeExpiredRoom(roomId, data) {
         if (!roomId || !db) return;
         try {
@@ -238,18 +276,23 @@
         try {
             const userSnap = await userRefFor(myUid).get();
             if (!userSnap.exists) return;
-            const createdRooms = (userSnap.data() || {}).createdRooms || {};
-            const ids = Object.keys(createdRooms).slice(0, 20);
+            const data = userSnap.data() || {};
+            const createdRooms = data.createdRooms || {};
+            const joinedRooms = data.joinedRooms || {};
+            const ids = Object.keys(Object.assign({}, createdRooms, joinedRooms)).slice(0, 20);
             for (let i = 0; i < ids.length; i++) {
                 const id = ids[i];
                 const snap = await db.collection('rooms').doc(id).get();
                 if (!snap.exists) {
-                    await releaseCreatedRoom(id, myUid);
+                    await pruneUserRoomMaps(id, myUid);
                     continue;
                 }
                 const d = snap.data();
                 if (isExpiredRoom(d) || d.status === 'abandoned') {
                     await purgeExpiredRoom(id, d);
+                    await pruneUserRoomMaps(id, myUid);
+                } else if (d.status === 'ended') {
+                    await pruneUserRoomMaps(id, myUid);
                 }
             }
         } catch (e) {
@@ -617,6 +660,8 @@
                 const nextCreated = {};
                 liveIds.forEach((id) => { nextCreated[id] = true; });
                 nextCreated[roomRef.id] = true;
+                const nextJoined = Object.assign({}, userData.joinedRooms || {});
+                nextJoined[roomRef.id] = true;
 
                 tx.set(roomRef, {
                     code,
@@ -636,7 +681,8 @@
                 });
                 tx.set(userRef, {
                     uid: myUid,
-                    createdRooms: nextCreated
+                    createdRooms: nextCreated,
+                    joinedRooms: nextJoined
                 }, { merge: true });
             });
         } catch (err) {
@@ -661,11 +707,13 @@
         }, { displayName: name });
 
         localStorage.setItem('pst_room_id', roomRef.id);
+        await rememberJoinedRoom(roomRef.id);
 
         await applyClaimedDisplayName(participants);
 
         attachListener(roomRef.id);
         startPresence();
+        applyRemote(game);
         emit('room', getRoomSnapshot());
         return getRoomSnapshot();
     }
@@ -755,13 +803,14 @@
         });
 
         localStorage.setItem('pst_room_id', roomId);
+        await rememberJoinedRoom(roomId);
 
         await applyClaimedDisplayName(joinedData.participants);
 
         attachListener(roomId);
         startPresence();
-        emit('room', getRoomSnapshot());
         applyRemote(joinedData.game);
+        emit('room', getRoomSnapshot());
 
         return getRoomSnapshot();
     }
@@ -906,18 +955,32 @@
         });
     }
 
-    async function leaveRoom() {
+    function clearLocalRoom(shouldEmit) {
         stopPresence();
         detachListener();
-        const prev = roomState;
         roomState = null;
         resetPushState();
-        localStorage.removeItem('pst_room_id');
-        emit('room', null);
+        try { localStorage.removeItem('pst_room_id'); } catch (e) { /* ignore */ }
+        if (shouldEmit) emit('room', null);
+    }
+
+    async function detachRoom() {
+        clearLocalRoom(true);
+    }
+
+    async function leaveRoom() {
+        const prev = roomState;
+        const prevId = prev && prev.roomId;
+        clearLocalRoom(true);
 
         if (!prev || !db || !uid()) return;
         try {
             await performLeave(prev);
+            if (!prevId) return;
+            const snap = await db.collection('rooms').doc(prevId).get();
+            const data = snap.exists ? snap.data() : null;
+            const me = data && data.participants && data.participants[uid()];
+            if (!me) await forgetJoinedRoom(prevId);
         } catch (e) {
             console.warn('leaveRoom cleanup', e);
         }
@@ -1034,6 +1097,116 @@
         return result;
     }
 
+    function roomListTitle(data) {
+        const name = data && data.game && data.game.sessionName;
+        const trimmed = String(name || '').trim();
+        if (!trimmed || /^session name$/i.test(trimmed)) return 'Untitled session';
+        return trimmed;
+    }
+
+    function summarizeRoom(roomId, data) {
+        const myUid = uid();
+        const me = data && data.participants && data.participants[myUid];
+        const participants = data && data.participants ? data.participants : {};
+        return {
+            roomId,
+            code: data.code || '',
+            sessionName: roomListTitle(data),
+            role: (me && me.role) || (data.hostId === myUid ? 'host' : 'viewer'),
+            expiresAt: expiresAtMillis(data),
+            updatedAt: millisFromTs(data && data.updatedAt) || createdAtMillis(data),
+            playerCount: Object.keys(participants).length,
+            hosted: data.hostId === myUid || data.createdBy === myUid
+        };
+    }
+
+    async function listMyRooms() {
+        if (!isConfigured()) return [];
+        try {
+            await ensureFirebase();
+        } catch (e) {
+            return [];
+        }
+        const myUid = uid();
+        if (!myUid || !db) return [];
+        const userSnap = await userRefFor(myUid).get();
+        if (!userSnap.exists) return [];
+        const data = userSnap.data() || {};
+        const ids = Object.keys(Object.assign({}, data.createdRooms || {}, data.joinedRooms || {})).slice(0, 20);
+        const out = [];
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            const snap = await db.collection('rooms').doc(id).get();
+            if (!snap.exists) {
+                await pruneUserRoomMaps(id, myUid);
+                continue;
+            }
+            const d = snap.data();
+            if (isExpiredRoom(d) || d.status === 'abandoned') {
+                await purgeExpiredRoom(id, d);
+                await pruneUserRoomMaps(id, myUid);
+                continue;
+            }
+            if (d.status === 'ended' || (d.status && d.status !== 'active')) {
+                await pruneUserRoomMaps(id, myUid);
+                continue;
+            }
+            const me = d.participants && d.participants[myUid];
+            if (!me) {
+                await forgetJoinedRoom(id);
+                continue;
+            }
+            out.push(summarizeRoom(id, d));
+        }
+        out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0) || String(a.code).localeCompare(String(b.code)));
+        return out;
+    }
+
+    async function enterRoom(roomId) {
+        await ensureFirebase();
+        const id = String(roomId || '').trim();
+        if (!id) throw new Error('Room not found.');
+        if (roomState && roomState.roomId === id) return getRoomSnapshot();
+        if (roomState) clearLocalRoom(false);
+
+        const roomRef = db.collection('rooms').doc(id);
+        const snap = await roomRef.get();
+        if (!snap.exists) {
+            await pruneUserRoomMaps(id, uid());
+            throw new Error('Room no longer exists.');
+        }
+        const data = snap.data();
+        if (isExpiredRoom(data)) {
+            await purgeExpiredRoom(id, data);
+            await pruneUserRoomMaps(id, uid());
+            throw new Error('This room has expired. Rooms last 1 week.');
+        }
+        if (data.status === 'ended') {
+            await pruneUserRoomMaps(id, uid());
+            throw new Error('This room has ended.');
+        }
+        if (data.status === 'abandoned') {
+            await pruneUserRoomMaps(id, uid());
+            throw new Error('This room is closed (everyone left).');
+        }
+        const myUid = uid();
+        const me = data.participants && data.participants[myUid];
+        if (!me) {
+            await forgetJoinedRoom(id);
+            throw new Error('You are not in this room. Join with the code.');
+        }
+
+        setRoomStateFromDoc(id, data);
+        localStorage.setItem('pst_room_id', id);
+        await rememberJoinedRoom(id);
+        await applyClaimedDisplayName(data.participants);
+        attachListener(id);
+        startPresence();
+        applyRemote(data.game);
+        emit('room', getRoomSnapshot());
+        return getRoomSnapshot();
+    }
+
     async function tryRestoreRoom() {
         if (!isConfigured()) return null;
         await runPendingAbandonCleanup();
@@ -1070,8 +1243,8 @@
             await applyClaimedDisplayName(data.participants);
             attachListener(roomId);
             startPresence();
-            emit('room', getRoomSnapshot());
             applyRemote(data.game);
+            emit('room', getRoomSnapshot());
             return getRoomSnapshot();
         } catch (e) {
             console.warn('tryRestoreRoom', e);
@@ -1119,8 +1292,11 @@
         activeParticipants,
         createRoom,
         joinRoom,
+        enterRoom,
+        listMyRooms,
         updateMyDisplayName,
         leaveRoom,
+        detachRoom,
         endRoom,
         setParticipantRole,
         kickParticipant,

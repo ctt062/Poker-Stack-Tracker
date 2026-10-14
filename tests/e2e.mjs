@@ -118,6 +118,29 @@ async function gotoApp(page, origin) {
     await page.goto(`${origin}/index.html`, { waitUntil: 'domcontentloaded' });
 }
 
+async function waitHome(page) {
+    await page.waitForFunction(() => {
+        const home = document.getElementById('homeScreen');
+        return document.documentElement.classList.contains('app-home')
+            && !document.documentElement.classList.contains('auth-pending')
+            && home
+            && getComputedStyle(home).display === 'flex';
+    });
+    await page.waitForSelector('#homeSoloBtn', { visible: true });
+}
+
+async function enterSolo(page) {
+    await waitHome(page);
+    await tap(page, '#homeSoloBtn');
+    await page.waitForFunction(() => {
+        const home = document.getElementById('homeScreen');
+        return !document.documentElement.classList.contains('app-home')
+            && home
+            && (home.hidden || getComputedStyle(home).display === 'none');
+    });
+    await page.waitForSelector('#addPlayerBtn', { visible: true });
+}
+
 async function tap(page, selector) {
     await page.waitForSelector(selector);
     await page.$eval(selector, (el) => {
@@ -642,17 +665,96 @@ async function run() {
             });
             await page.waitForFunction(() => {
                 const gate = document.getElementById('authGate');
-                return gate && getComputedStyle(gate).display === 'none';
+                const home = document.getElementById('homeScreen');
+                return gate && getComputedStyle(gate).display === 'none'
+                    && home && getComputedStyle(home).display === 'flex';
             });
             const unlocked = await page.evaluate(() => ({
                 pending: document.documentElement.classList.contains('auth-pending'),
                 gate: getComputedStyle(document.getElementById('authGate')).display,
-                chip: (document.getElementById('accountChipName') || {}).textContent,
-                house: Array.from(document.querySelectorAll('.house-row .player-name')).map((el) => el.textContent)
+                home: getComputedStyle(document.getElementById('homeScreen')).display,
+                chip: (document.getElementById('homeAccountChipName') || {}).textContent,
+                solo: (document.getElementById('homeSoloBtn') || {}).textContent,
+                create: (document.getElementById('homeCreateRoomBtn') || {}).textContent,
+                join: !!(document.getElementById('homeJoinRoomCode') && document.getElementById('homeJoinRoomBtn')),
+                empty: (document.getElementById('homeRoomEmpty') || {}).textContent,
+                roomsPanelHidden: !!(document.getElementById('homeRoomsPanel') || {}).hidden
             }));
-            ok('name plus signed-in snapshot unlocks tracker', unlocked.pending === false && unlocked.gate === 'none', JSON.stringify(unlocked));
-            ok('account chip shows saved name', unlocked.chip === 'River', unlocked.chip);
-            ok('house rows present after auth unlock', unlocked.house.includes('Dealer') && unlocked.house.includes('Host'), JSON.stringify(unlocked.house));
+            ok('name plus signed-in snapshot shows home', unlocked.pending === false && unlocked.gate === 'none' && unlocked.home === 'flex', JSON.stringify(unlocked));
+            ok('home account chip shows saved name', unlocked.chip === 'River', unlocked.chip);
+            ok(
+                'home offers solo, create, and join',
+                /solo/i.test(unlocked.solo) && /create room/i.test(unlocked.create) && unlocked.join && unlocked.roomsPanelHidden === false,
+                JSON.stringify(unlocked)
+            );
+            ok('home empty rooms copy', /no live rooms/i.test(unlocked.empty), unlocked.empty);
+            await shot(page, 'home-after-display-name.png');
+
+            await page.evaluate(() => {
+                RoomSync.isConfigured = () => true;
+                RoomSync.listMyRooms = async () => ([{
+                    roomId: 'r1',
+                    code: '0421',
+                    sessionName: 'Friday night',
+                    role: 'host',
+                    expiresAt: Date.now() + 5 * 86400000,
+                    playerCount: 3
+                }]);
+                RoomSync.enterRoom = async (id) => {
+                    window.__enteredRoom = id;
+                    return {
+                        roomId: id,
+                        code: '0421',
+                        role: 'host',
+                        status: 'active',
+                        canEdit: true,
+                        isHost: true,
+                        displayName: 'River'
+                    };
+                };
+                RoomSync.getRoomSnapshot = () => ({
+                    roomId: 'r1',
+                    code: '0421',
+                    role: 'host',
+                    status: 'active',
+                    canEdit: true,
+                    isHost: true,
+                    displayName: 'River'
+                });
+                refreshHomeRooms();
+            });
+            await page.waitForFunction(() => {
+                const empty = document.getElementById('homeRoomEmpty');
+                const rows = document.querySelectorAll('#homeRoomList .home-room-row');
+                return empty && empty.hidden && rows.length === 1;
+            });
+            const row = await page.evaluate(() => {
+                const btn = document.querySelector('#homeRoomList .home-room-row');
+                return {
+                    title: btn ? (btn.querySelector('.home-room-row-title') || {}).textContent : '',
+                    meta: btn ? (btn.querySelector('.home-room-row-meta') || {}).textContent : '',
+                    h: btn ? Math.round(btn.getBoundingClientRect().height) : 0
+                };
+            });
+            ok('home lists a live hosted room', row.title === 'Friday night' && /0421/.test(row.meta) && /Room host/.test(row.meta), JSON.stringify(row));
+            ok('home room row is a 44px tap target', row.h >= 44, JSON.stringify(row));
+            await shot(page, 'home-with-room-row.png');
+            await tap(page, '#homeRoomList .home-room-row');
+            await page.waitForFunction(() => !document.documentElement.classList.contains('app-home'));
+            const entered = await page.evaluate(() => window.__enteredRoom);
+            ok('tapping a home room opens it', entered === 'r1', String(entered));
+            await tap(page, '#roomsHomeBtn');
+            await waitHome(page);
+            ok('Rooms from a live room returns to home', true);
+            await page.evaluate(() => {
+                RoomSync.getRoomSnapshot = () => null;
+                RoomSync.isInRoom = () => false;
+                updateRoomStatusBar(null);
+            });
+
+            await enterSolo(page);
+            const house = await page.evaluate(() => Array.from(document.querySelectorAll('.house-row .player-name')).map((el) => el.textContent));
+            ok('house rows present after solo from home', house.includes('Dealer') && house.includes('Host'), JSON.stringify(house));
             await shot(page, 'tracker-after-display-name.png');
 
             await tap(page, '#roomBtn');
@@ -772,7 +874,27 @@ async function run() {
             await gotoApp(page, origin);
             await page.evaluate(() => localStorage.clear());
             await page.reload({ waitUntil: 'domcontentloaded' });
-            await page.waitForSelector('#accountBtn', { visible: true });
+            await waitHome(page);
+
+            const home = await page.evaluate(() => ({
+                pending: document.documentElement.classList.contains('auth-pending'),
+                gateDisplay: getComputedStyle(document.getElementById('authGate')).display,
+                home: getComputedStyle(document.getElementById('homeScreen')).display,
+                solo: (document.getElementById('homeSoloBtn') || {}).textContent,
+                roomsPanelHidden: !!(document.getElementById('homeRoomsPanel') || {}).hidden,
+                emptyHidden: !!(document.getElementById('homeRoomEmpty') || {}).hidden
+            }));
+            ok('solo skips auth gate and shows home', home.pending === false && home.gateDisplay === 'none' && home.home === 'flex', JSON.stringify(home));
+            ok('home hides create/join without Firebase', home.roomsPanelHidden === true && /solo/i.test(home.solo), JSON.stringify(home));
+            await shot(page, 'home-desktop.png');
+
+            await enterSolo(page);
+            const roomsBtn = await page.$eval('#roomsHomeBtn', (el) => el.textContent);
+            ok('tracker has a Rooms back button', /rooms/i.test(roomsBtn), roomsBtn);
+            await tap(page, '#roomsHomeBtn');
+            await waitHome(page);
+            ok('Rooms from solo returns to home', true);
+            await enterSolo(page);
 
             const solo = await page.evaluate(() => ({
                 pending: document.documentElement.classList.contains('auth-pending'),
@@ -1227,6 +1349,7 @@ async function run() {
                 }));
             });
             await page.reload({ waitUntil: 'domcontentloaded' });
+            await enterSolo(page);
             await page.waitForSelector('#playerTableBody');
             await page.waitForFunction(() => document.querySelectorAll('.house-row').length === 2);
             const legacy = await page.evaluate(() => ({
@@ -1250,6 +1373,9 @@ async function run() {
             await gotoApp(page, origin);
             await page.evaluate(() => localStorage.clear());
             await page.reload({ waitUntil: 'domcontentloaded' });
+            await waitHome(page);
+            await shot(page, 'home-mobile.png');
+            await enterSolo(page);
             await page.waitForSelector('#addPlayerBtn', { visible: true });
             await addPlayer(page, 'Alice', 200);
             await shot(page, 'solo-tracker-mobile.png');

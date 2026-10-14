@@ -750,7 +750,7 @@ tbody td {
 .modal {
     display: none;
     position: fixed;
-    z-index: 1000;
+    z-index: 1600;
     left: 0;
     top: 0;
     width: 100%;
@@ -1161,6 +1161,7 @@ tbody td {
     display: flex;
     gap: 8px;
     flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
 .btn-secondary {
@@ -1406,6 +1407,20 @@ body.room-view-only .session-clock {
 
     .room-join-row {
         flex-direction: column;
+    }
+
+    .room-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .room-actions {
+        width: 100%;
+    }
+
+    .room-actions .btn {
+        flex: 1;
+        min-height: 44px;
     }
 }
 
@@ -1943,8 +1958,135 @@ body.auth-pending #authGate {
 html.auth-pending body > .container,
 html.auth-pending body > .footer,
 body.auth-pending .container,
-body.auth-pending .footer {
+body.auth-pending .footer,
+html.app-home body > .container,
+html.app-home body > .footer,
+body.app-home .container,
+body.app-home .footer {
     visibility: hidden;
+}
+
+html.auth-pending,
+html.auth-pending body,
+html.app-home,
+html.app-home body {
+    overflow: hidden;
+    height: 100%;
+}
+
+.home-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 20px;
+    overflow-y: auto;
+    background: var(--modal-overlay);
+    backdrop-filter: blur(8px);
+}
+
+.home-screen::before,
+.home-screen::after {
+    content: '';
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+html.app-home #homeScreen,
+body.app-home #homeScreen {
+    display: flex;
+}
+
+html.auth-pending #homeScreen,
+body.auth-pending #homeScreen {
+    display: none;
+}
+
+.home-card {
+    width: 100%;
+    max-width: 420px;
+    min-width: 0;
+    flex-shrink: 0;
+    margin: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 28px 24px;
+    box-shadow: 0 8px 32px var(--shadow);
+}
+
+.home-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.home-card-top .account-chip {
+    flex-shrink: 0;
+}
+
+.home-card-top h1 {
+    font-size: 22px;
+    margin: 0;
+    min-width: 0;
+}
+
+.home-rooms-heading {
+    font-size: 16px;
+    margin: 20px 0 10px;
+}
+
+.home-room-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 8px;
+    padding: 0;
+}
+
+.home-room-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+    min-height: 44px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.home-room-row:hover,
+.home-room-row:focus-visible {
+    border-color: var(--accent-primary);
+}
+
+.home-room-row-title {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.home-room-row-meta {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.home-card .btn-auth {
+    margin-top: 4px;
+}
+
+.home-card .room-join-row .btn {
+    min-height: 44px;
 }
 
 @media (max-width: 640px) {
@@ -1952,8 +2094,13 @@ body.auth-pending .footer {
         max-width: 72px;
     }
 
-    .auth-card {
+    .auth-card,
+    .home-card {
         padding: 22px 16px;
+    }
+
+    .home-card-top h1 {
+        font-size: 20px;
     }
 }
 

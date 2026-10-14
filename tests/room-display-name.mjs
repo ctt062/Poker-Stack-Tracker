@@ -44,21 +44,48 @@ function loadRoom(options = {}) {
     };
     const rooms = { [roomId]: roomDoc };
     const roomCodes = { [code]: { roomId } };
+    const users = { [uid]: { uid, createdRooms: {}, joinedRooms: {} } };
 
     function firestore() {
         return {
             collection(name) {
                 return {
                     doc(id) {
+                        const store = name === 'rooms' ? rooms
+                            : name === 'roomCodes' ? roomCodes
+                                : name === 'users' ? users
+                                    : null;
                         return {
                             async get() {
-                                const data = name === 'rooms' ? rooms[id]
-                                    : name === 'roomCodes' ? roomCodes[id]
-                                    : null;
+                                const data = store ? store[id] : null;
                                 return { exists: !!data, data: () => data };
+                            },
+                            async set(payload, opts) {
+                                updates.push({ collection: name, id, payload, op: 'set' });
+                                if (!store) return;
+                                if (opts && opts.merge && store[id]) {
+                                    store[id] = Object.assign({}, store[id], payload);
+                                } else {
+                                    store[id] = JSON.parse(JSON.stringify(payload));
+                                }
                             },
                             async update(payload) {
                                 updates.push({ collection: name, id, payload });
+                                if (!store) return;
+                                if (!store[id]) store[id] = {};
+                                Object.keys(payload || {}).forEach((key) => {
+                                    if (key.indexOf('.') === -1) {
+                                        store[id][key] = payload[key];
+                                        return;
+                                    }
+                                    const parts = key.split('.');
+                                    let cur = store[id];
+                                    for (let i = 0; i < parts.length - 1; i++) {
+                                        if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+                                        cur = cur[parts[i]];
+                                    }
+                                    cur[parts[parts.length - 1]] = payload[key];
+                                });
                             },
                             async delete() {
                                 updates.push({ collection: name, id, payload: { _delete: true } });
