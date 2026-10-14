@@ -1232,7 +1232,7 @@
             }
             if (data.status === 'ended') {
                 localStorage.removeItem('pst_room_id');
-                return null;
+                return { restore: 'ended' };
             }
             const me = data.participants && data.participants[uid()];
             if (!me) {

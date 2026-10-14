@@ -99,8 +99,12 @@ async function withPage(browser, fn, viewport) {
     }
 }
 
-async function interceptEmptyFirebase(page) {
+async function interceptEmptyFirebase(page, opts = {}) {
     await page.setRequestInterception(true);
+    let releaseScript = () => {};
+    const scriptGate = opts.holdScript
+        ? new Promise((resolve) => { releaseScript = resolve; })
+        : Promise.resolve();
     page.on('request', (req) => {
         if (req.url().includes('firebase-config.js')) {
             req.respond({
@@ -110,8 +114,15 @@ async function interceptEmptyFirebase(page) {
             });
             return;
         }
+        if (opts.holdScript && /\/script\.js(\?|$)/.test(req.url())) {
+            scriptGate.then(() => req.continue()).catch(() => {
+                try { req.abort('failed'); } catch (e) { /* already handled */ }
+            });
+            return;
+        }
         req.continue();
     });
+    return { releaseScript };
 }
 
 async function gotoApp(page, origin) {
@@ -1333,6 +1344,155 @@ async function run() {
             const peopleHint = await page.$eval('#peopleModal .room-hint', (el) => el.textContent);
             ok('people modal labels Room host as a permission', /Room host is a permission, not the Host payee/i.test(peopleHint), peopleHint);
             await shot(page, 'solo-account-room-name.png');
+        });
+
+        await scenario('no-config first paint covers the table', async (page) => {
+            const { releaseScript } = await interceptEmptyFirebase(page, { holdScript: true });
+            const loaded = page.goto(`${origin}/index.html`, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => document.getElementById('homeScreen') && document.querySelector('body > .container'));
+            const firstPaint = await page.evaluate(() => {
+                const container = document.querySelector('body > .container');
+                const home = document.getElementById('homeScreen');
+                const gate = document.getElementById('authGate');
+                return {
+                    appHome: document.documentElement.classList.contains('app-home'),
+                    pending: document.documentElement.classList.contains('auth-pending'),
+                    containerVis: container ? getComputedStyle(container).visibility : '',
+                    homeDisplay: home ? getComputedStyle(home).display : '',
+                    gateDisplay: gate ? getComputedStyle(gate).display : ''
+                };
+            });
+            ok(
+                'no-config first paint hides the table without the auth gate',
+                firstPaint.appHome === true
+                    && firstPaint.pending === false
+                    && firstPaint.containerVis === 'hidden'
+                    && firstPaint.gateDisplay === 'none',
+                JSON.stringify(firstPaint)
+            );
+            releaseScript();
+            await loaded;
+            await waitHome(page);
+            const afterBoot = await page.evaluate(() => {
+                const container = document.querySelector('body > .container');
+                return {
+                    home: getComputedStyle(document.getElementById('homeScreen')).display,
+                    containerVis: container ? getComputedStyle(container).visibility : ''
+                };
+            });
+            ok(
+                'no-config boot stays on home with the table covered',
+                afterBoot.home === 'flex' && afterBoot.containerVis === 'hidden',
+                JSON.stringify(afterBoot)
+            );
+        });
+
+        await scenario('restore covering and ended backup', async (page) => {
+            await gotoApp(page, origin);
+            await waitAuthGate(page);
+            const covered = await page.evaluate(() => {
+                const claimed = {
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'River',
+                    email: '',
+                    emailVerified: true,
+                    provider: 'google.com',
+                    providerLabel: 'Google'
+                };
+                if (window.AppAuth) {
+                    AppAuth.getDisplayName = () => 'River';
+                    AppAuth.snapshot = () => claimed;
+                }
+                return new Promise((resolve) => {
+                    RoomSync.tryRestoreRoom = async () => {
+                        const container = document.querySelector('body > .container');
+                        const gate = document.getElementById('authGate');
+                        resolve({
+                            pending: document.documentElement.classList.contains('auth-pending'),
+                            appHome: document.documentElement.classList.contains('app-home'),
+                            containerVis: container ? getComputedStyle(container).visibility : '',
+                            gate: gate ? getComputedStyle(gate).display : ''
+                        });
+                        return null;
+                    };
+                    applyAuthSnapshot(claimed);
+                });
+            });
+            ok(
+                'signed-in restore keeps covering until destination is chosen',
+                covered.pending === true
+                    && covered.appHome === false
+                    && covered.containerVis === 'hidden'
+                    && covered.gate === 'flex',
+                JSON.stringify(covered)
+            );
+        });
+
+        await scenario('ended restore keeps finals and drops backup', async (page) => {
+            await interceptEmptyFirebase(page);
+            await gotoApp(page, origin);
+            await waitHome(page);
+
+            function sampleGame(sessionName, playerName) {
+                return {
+                    blindStructure: { small: 1, big: 2 },
+                    stackAmount: 200,
+                    players: [{ id: 1, name: playerName, totalBuyIn: 50, cashOut: 0 }],
+                    sessionName,
+                    bankerName: 'Banker',
+                    darkMode: true
+                };
+            }
+
+            async function runRestore(mode, finals, solo) {
+                return page.evaluate(async (kind, roomGame, soloGame) => {
+                    localStorage.setItem('pokerStackTracker', JSON.stringify(roomGame));
+                    localStorage.setItem('pokerStackTracker_soloBackup', JSON.stringify(soloGame));
+                    if (kind === 'error') localStorage.setItem('pst_room_id', 'held');
+                    else localStorage.removeItem('pst_room_id');
+                    RoomSync.tryRestoreRoom = async () => {
+                        if (kind === 'ended') return { restore: 'ended' };
+                        return null;
+                    };
+                    restoreJoinedRoom();
+                    await new Promise((r) => setTimeout(r, 0));
+                    return {
+                        session: JSON.parse(localStorage.getItem('pokerStackTracker') || '{}').sessionName,
+                        backup: localStorage.getItem('pokerStackTracker_soloBackup'),
+                        roomId: localStorage.getItem('pst_room_id'),
+                        home: document.documentElement.classList.contains('app-home')
+                    };
+                }, mode, finals, solo);
+            }
+
+            const endedStore = await runRestore('ended', sampleGame('Finals', 'Ann'), sampleGame('Old solo', 'Bob'));
+            ok(
+                'ended restore keeps final numbers and drops the solo backup',
+                endedStore.session === 'Finals' && endedStore.backup == null && endedStore.home === true,
+                JSON.stringify(endedStore)
+            );
+
+            const leftStore = await runRestore('left', sampleGame('Finals', 'Ann'), sampleGame('Old solo', 'Bob'));
+            ok(
+                'unavailable restore puts the solo backup back',
+                leftStore.session === 'Old solo' && leftStore.backup == null,
+                JSON.stringify(leftStore)
+            );
+
+            const errorStore = await runRestore('error', sampleGame('Finals', 'Ann'), sampleGame('Old solo', 'Bob'));
+            ok(
+                'restore error leaves the backup and room id in place',
+                errorStore.session === 'Finals'
+                    && errorStore.backup != null
+                    && JSON.parse(errorStore.backup).sessionName === 'Old solo'
+                    && errorStore.roomId === 'held',
+                JSON.stringify({
+                    session: errorStore.session,
+                    roomId: errorStore.roomId,
+                    backupSession: errorStore.backup && JSON.parse(errorStore.backup).sessionName
+                })
+            );
         });
 
         await scenario('legacy localStorage defaults', async (page) => {

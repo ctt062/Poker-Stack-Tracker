@@ -292,7 +292,11 @@ async function run() {
     {
         const { RoomSync, updates } = loadRoom({ status: 'ended' });
         const restored = await RoomSync.tryRestoreRoom();
-        ok('ended room is not restored', restored == null, JSON.stringify(restored));
+        ok(
+            'ended room is not restored',
+            !!(restored && restored.restore === 'ended' && !restored.roomId),
+            JSON.stringify(restored)
+        );
         updates.length = 0;
         const result = await RoomSync.updateMyDisplayName('Robert');
         ok(

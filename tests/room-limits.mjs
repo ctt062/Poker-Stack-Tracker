@@ -145,7 +145,10 @@ function loadRoom(options = {}) {
     };
     sandbox.window = sandbox;
     sandbox.AppAuth = {
-        async ensureAuth() { return { signedIn: true, uid }; },
+        async ensureAuth() {
+            if (options.ensureAuthFails) throw new Error('offline');
+            return { signedIn: true, uid };
+        },
         getDisplayName() { return options.displayName || 'River'; }
     };
     vm.createContext(sandbox);
@@ -366,6 +369,35 @@ async function run() {
         ok('expired room is not restored', restored == null, JSON.stringify(restored));
         ok('expired restore deletes the room', after.old == null, JSON.stringify(after));
         ok('expired restore clears local room id', storage.getItem('pst_room_id') == null);
+    }
+
+    {
+        const uid = 'alice';
+        const rooms = {
+            done: Object.assign(liveRoom(uid, 'END1'), { status: 'ended' })
+        };
+        const { RoomSync, storage, rooms: after } = loadRoom({
+            uid,
+            rooms,
+            roomCodes: { END1: { roomId: 'done' } }
+        });
+        storage.setItem('pst_room_id', 'done');
+        const restored = await RoomSync.tryRestoreRoom();
+        ok(
+            'ended restore signals ended without attaching',
+            !!(restored && restored.restore === 'ended' && !restored.roomId),
+            JSON.stringify(restored)
+        );
+        ok('ended restore keeps the room doc', after.done != null && after.done.status === 'ended');
+        ok('ended restore clears local room id', storage.getItem('pst_room_id') == null);
+    }
+
+    {
+        const { RoomSync, storage } = loadRoom({ ensureAuthFails: true });
+        storage.setItem('pst_room_id', 'held');
+        const restored = await RoomSync.tryRestoreRoom();
+        ok('restore error does not attach', restored == null, JSON.stringify(restored));
+        ok('restore error keeps local room id', storage.getItem('pst_room_id') === 'held');
     }
 
     {

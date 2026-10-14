@@ -2489,6 +2489,8 @@ function blankRoomGame(rake) {
 }
 
 function showTracker() {
+    document.documentElement.classList.remove('auth-pending');
+    document.body.classList.remove('auth-pending');
     document.documentElement.classList.remove('app-home');
     document.body.classList.remove('app-home');
     const home = document.getElementById('homeScreen');
@@ -2634,26 +2636,37 @@ function restoreJoinedRoom() {
         return;
     }
     RoomSync.tryRestoreRoom().then((snap) => {
+        if (!appUnlocked) return;
+        if (snap && snap.restore === 'ended') {
+            pendingSoloStash = false;
+            localStorage.removeItem(SOLO_BACKUP_KEY);
+            showHome();
+            return;
+        }
         if (snap) {
             updateRoomStatusBar(snap);
             applyEditabilityUI();
             showTracker();
             return;
         }
+        if (localStorage.getItem('pst_room_id')) {
+            pendingSoloStash = false;
+            showHome();
+            return;
+        }
+        pendingSoloStash = false;
         restoreSoloSnapshot();
         showHome();
     }).catch((e) => {
         console.warn(e);
+        if (!appUnlocked) return;
         showHome();
     });
 }
 
 function unlockApp() {
     stopVerifyPoll();
-    document.documentElement.classList.remove('auth-pending');
-    document.body.classList.remove('auth-pending');
     updateAccountChip();
-    updateDisplay();
     initRoomUI();
     if (!appUnlocked) {
         appUnlocked = true;

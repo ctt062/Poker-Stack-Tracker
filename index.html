@@ -12,6 +12,8 @@
     <script>
         if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey) {
             document.documentElement.classList.add('auth-pending');
+        } else {
+            document.documentElement.classList.add('app-home');
         }
     </script>
 </head>
