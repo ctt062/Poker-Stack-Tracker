@@ -49,6 +49,7 @@ function loadRoom(options = {}) {
     const users = options.users || { [uid]: { uid, createdRooms: {} } };
     let seq = 0;
     const writes = [];
+    const snapshotCbs = new Map();
 
     function docRef(name, id) {
         const store = name === 'rooms' ? rooms
@@ -82,8 +83,12 @@ function loadRoom(options = {}) {
                 writes.push({ op: 'delete', collection: name, id });
                 delete store[id];
             },
-            onSnapshot() {
-                return () => {};
+            onSnapshot(onNext) {
+                const key = name + ':' + id;
+                snapshotCbs.set(key, onNext);
+                return () => {
+                    if (snapshotCbs.get(key) === onNext) snapshotCbs.delete(key);
+                };
             }
         };
     }
@@ -153,6 +158,20 @@ function loadRoom(options = {}) {
     };
     vm.createContext(sandbox);
     vm.runInContext(SOURCE, sandbox);
+    function fireDocSnapshot(collection, docId) {
+        const cb = snapshotCbs.get(collection + ':' + docId);
+        if (!cb) return false;
+        const store = collection === 'rooms' ? rooms
+            : collection === 'roomCodes' ? roomCodes
+                : users;
+        const data = store[docId];
+        cb({
+            exists: data != null,
+            data: () => (data == null ? undefined : JSON.parse(JSON.stringify(data)))
+        });
+        return true;
+    }
+
     return {
         RoomSync: sandbox.RoomSync,
         writes,
@@ -160,7 +179,8 @@ function loadRoom(options = {}) {
         roomCodes,
         users,
         uid,
-        storage: sandbox.localStorage
+        storage: sandbox.localStorage,
+        fireDocSnapshot
     };
 }
 
@@ -187,6 +207,13 @@ function liveRoom(uid, code) {
         },
         game: { players: [] }
     };
+}
+
+function endedRoom(uid, code) {
+    return Object.assign(liveRoom(uid, code), {
+        status: 'ended',
+        expiresAt: Date.now()
+    });
 }
 
 async function run() {
@@ -306,7 +333,7 @@ async function run() {
         const rooms = {
             r1: liveRoom(uid, 'AAAAA'),
             r2: Object.assign(liveRoom(uid, 'BBBBB'), { expiresAt: Date.now() - 1000 }),
-            r3: Object.assign(liveRoom(uid, 'CCCCC'), { status: 'ended' })
+            r3: endedRoom(uid, 'CCCCC')
         };
         const { RoomSync, rooms: after, users } = loadRoom({
             uid,
@@ -374,12 +401,13 @@ async function run() {
     {
         const uid = 'alice';
         const rooms = {
-            done: Object.assign(liveRoom(uid, 'END1'), { status: 'ended' })
+            done: endedRoom(uid, 'END1')
         };
         const { RoomSync, storage, rooms: after } = loadRoom({
             uid,
             rooms,
-            roomCodes: { END1: { roomId: 'done' } }
+            roomCodes: { END1: { roomId: 'done' } },
+            users: { [uid]: { uid, createdRooms: { done: true }, joinedRooms: { done: true } } }
         });
         storage.setItem('pst_room_id', 'done');
         const restored = await RoomSync.tryRestoreRoom();
@@ -390,6 +418,102 @@ async function run() {
         );
         ok('ended restore keeps the room doc', after.done != null && after.done.status === 'ended');
         ok('ended restore clears local room id', storage.getItem('pst_room_id') == null);
+        await new Promise((r) => setTimeout(r, 0));
+        ok(
+            'ended restore still keeps the room doc after sweep',
+            after.done != null && after.done.status === 'ended',
+            JSON.stringify(after.done)
+        );
+    }
+
+    {
+        const uid = 'alice';
+        const rooms = {
+            done: endedRoom(uid, 'END1')
+        };
+        const { RoomSync, rooms: after, roomCodes } = loadRoom({
+            uid,
+            rooms,
+            roomCodes: { END1: { roomId: 'done' } }
+        });
+        let err = null;
+        try {
+            await RoomSync.joinRoom('END1', 'River');
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'joining an ended room is rejected as ended',
+            !!(err && /ended/i.test(err.message) && !/expired/i.test(err.message)),
+            err && err.message
+        );
+        ok('joining an ended room does not purge it', after.done != null && after.done.status === 'ended');
+        ok('joining an ended room does not delete the leftover code', roomCodes.END1 != null);
+    }
+
+    {
+        const uid = 'alice';
+        const rooms = {
+            done: endedRoom(uid, 'END1')
+        };
+        const { RoomSync, rooms: after, users } = loadRoom({
+            uid,
+            rooms,
+            users: { [uid]: { uid, createdRooms: { done: true }, joinedRooms: { done: true } } }
+        });
+        let err = null;
+        try {
+            await RoomSync.enterRoom('done');
+        } catch (e) {
+            err = e;
+        }
+        ok(
+            'entering an ended room is rejected as ended',
+            !!(err && /ended/i.test(err.message) && !/expired/i.test(err.message)),
+            err && err.message
+        );
+        ok('entering an ended room does not purge it', after.done != null && after.done.status === 'ended');
+        ok(
+            'entering an ended room drops it from the user maps',
+            !(users[uid].joinedRooms && users[uid].joinedRooms.done)
+                && !(users[uid].createdRooms && users[uid].createdRooms.done),
+            JSON.stringify(users[uid])
+        );
+    }
+
+    {
+        const uid = 'bob';
+        const rooms = {
+            r1: Object.assign(liveRoom('host', '0421'), {
+                participants: {
+                    host: { displayName: 'Host', role: 'host', lastSeen: Date.now(), joinedAt: 1 },
+                    bob: { displayName: 'Bob', role: 'viewer', lastSeen: Date.now(), joinedAt: 2 }
+                }
+            })
+        };
+        const { RoomSync, rooms: after, fireDocSnapshot } = loadRoom({
+            uid,
+            rooms,
+            roomCodes: { '0421': { roomId: 'r1' } },
+            users: { bob: { uid: 'bob', createdRooms: {}, joinedRooms: { r1: true } } }
+        });
+        const live = await RoomSync.enterRoom('r1');
+        ok('guest enters a live room before it ends', !!(live && live.roomId === 'r1'), JSON.stringify(live));
+        after.r1.status = 'ended';
+        after.r1.expiresAt = Date.now();
+        const fired = fireDocSnapshot('rooms', 'r1');
+        ok('live listener received the ended snapshot', fired);
+        const snap = RoomSync.getRoomSnapshot();
+        ok(
+            'live listener keeps the ended room attached',
+            !!(snap && snap.roomId === 'r1' && snap.status === 'ended'),
+            JSON.stringify(snap)
+        );
+        ok(
+            'live listener does not purge an ended room',
+            after.r1 != null && after.r1.status === 'ended',
+            JSON.stringify(after.r1)
+        );
     }
 
     {
@@ -440,7 +564,7 @@ async function run() {
                 game: { sessionName: 'Joined night' },
                 updatedAt: 40
             }),
-            ended: Object.assign(liveRoom(uid, '3333'), { status: 'ended' }),
+            ended: endedRoom(uid, '3333'),
             expired: Object.assign(liveRoom(uid, '4444'), { expiresAt: Date.now() - 1000 }),
             abandoned: Object.assign(liveRoom(uid, '5555'), { status: 'abandoned' }),
             left: Object.assign(liveRoom('host', '6666'), {
@@ -489,6 +613,11 @@ async function run() {
             'listMyRooms sorts by recency',
             listed[0].roomId === 'joined' && listed[1].roomId === 'hosted',
             JSON.stringify(listed.map((r) => r.roomId))
+        );
+        ok(
+            'listMyRooms does not purge an ended room',
+            rooms.ended != null && rooms.ended.status === 'ended',
+            JSON.stringify(rooms.ended)
         );
     }
 

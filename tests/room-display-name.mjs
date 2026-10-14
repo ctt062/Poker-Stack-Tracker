@@ -40,8 +40,10 @@ function loadRoom(options = {}) {
                 joinedAt: Date.now()
             }
         },
-        game: { players: [] }
+        game: { players: [] },
+        expiresAt: options.expiresAt
     };
+    if (options.expiresAt == null) delete roomDoc.expiresAt;
     const rooms = { [roomId]: roomDoc };
     const roomCodes = { [code]: { roomId } };
     const users = { [uid]: { uid, createdRooms: {}, joinedRooms: {} } };
@@ -290,7 +292,7 @@ async function run() {
     }
 
     {
-        const { RoomSync, updates } = loadRoom({ status: 'ended' });
+        const { RoomSync, updates } = loadRoom({ status: 'ended', expiresAt: Date.now() });
         const restored = await RoomSync.tryRestoreRoom();
         ok(
             'ended room is not restored',

@@ -288,10 +288,10 @@
                     continue;
                 }
                 const d = snap.data();
-                if (isExpiredRoom(d) || d.status === 'abandoned') {
-                    await purgeExpiredRoom(id, d);
+                if (d.status === 'ended') {
                     await pruneUserRoomMaps(id, myUid);
-                } else if (d.status === 'ended') {
+                } else if (isExpiredRoom(d) || d.status === 'abandoned') {
+                    await purgeExpiredRoom(id, d);
                     await pruneUserRoomMaps(id, myUid);
                 }
             }
@@ -537,7 +537,7 @@
                     return;
                 }
                 const data = snap.data();
-                if (isExpiredRoom(data)) {
+                if (data.status !== 'ended' && isExpiredRoom(data)) {
                     roomState = null;
                     stopPresence();
                     detachListener();
@@ -642,12 +642,12 @@
                     const item = existingSnaps[i];
                     if (!item.snap.exists) continue;
                     const d = item.snap.data();
+                    if (d.status === 'ended' || d.status === 'abandoned') continue;
                     if (isExpiredRoom(d)) {
                         tx.delete(db.collection('rooms').doc(item.id));
                         if (d.code) tx.delete(db.collection('roomCodes').doc(d.code));
                         continue;
                     }
-                    if (d.status === 'ended' || d.status === 'abandoned') continue;
                     liveIds.push(item.id);
                 }
 
@@ -735,11 +735,11 @@
         if (!roomSnap.exists) throw new Error('Room no longer exists.');
 
         const data = roomSnap.data();
+        if (data.status === 'ended') throw new Error('This room has ended.');
         if (isExpiredRoom(data)) {
             await purgeExpiredRoom(roomId, data);
             throw new Error('This room has expired. Rooms last 1 week.');
         }
-        if (data.status === 'ended') throw new Error('This room has ended.');
         if (data.status === 'abandoned') {
             throw new Error('This room is closed (everyone left).');
         }
@@ -1142,12 +1142,16 @@
                 continue;
             }
             const d = snap.data();
+            if (d.status === 'ended') {
+                await pruneUserRoomMaps(id, myUid);
+                continue;
+            }
             if (isExpiredRoom(d) || d.status === 'abandoned') {
                 await purgeExpiredRoom(id, d);
                 await pruneUserRoomMaps(id, myUid);
                 continue;
             }
-            if (d.status === 'ended' || (d.status && d.status !== 'active')) {
+            if (d.status && d.status !== 'active') {
                 await pruneUserRoomMaps(id, myUid);
                 continue;
             }
@@ -1176,14 +1180,14 @@
             throw new Error('Room no longer exists.');
         }
         const data = snap.data();
+        if (data.status === 'ended') {
+            await pruneUserRoomMaps(id, uid());
+            throw new Error('This room has ended.');
+        }
         if (isExpiredRoom(data)) {
             await purgeExpiredRoom(id, data);
             await pruneUserRoomMaps(id, uid());
             throw new Error('This room has expired. Rooms last 1 week.');
-        }
-        if (data.status === 'ended') {
-            await pruneUserRoomMaps(id, uid());
-            throw new Error('This room has ended.');
         }
         if (data.status === 'abandoned') {
             await pruneUserRoomMaps(id, uid());
@@ -1220,6 +1224,10 @@
                 return null;
             }
             const data = snap.data();
+            if (data.status === 'ended') {
+                localStorage.removeItem('pst_room_id');
+                return { restore: 'ended' };
+            }
             if (isExpiredRoom(data)) {
                 localStorage.removeItem('pst_room_id');
                 await purgeExpiredRoom(roomId, data);
@@ -1229,10 +1237,6 @@
                 localStorage.removeItem('pst_room_id');
                 await purgeAbandonedRoom(roomId, data.emptyAt || 0);
                 return null;
-            }
-            if (data.status === 'ended') {
-                localStorage.removeItem('pst_room_id');
-                return { restore: 'ended' };
             }
             const me = data.participants && data.participants[uid()];
             if (!me) {
