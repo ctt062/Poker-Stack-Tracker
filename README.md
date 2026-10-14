@@ -28,7 +28,7 @@ A minimalist web application for tracking chip stacks during poker games.
 
 ## Rooms (optional)
 
-If `firebase-config.js` is empty, the app stays local with no account. When Firebase is filled in:
+If `firebase-config.js` is empty, skip login: home still shows with only Solo (create/join hidden). When Firebase is filled in:
 
 1. Follow **[ROOM_SETUP.md](ROOM_SETUP.md)** (Google / email Auth + Firestore)
 2. Sign in with Google, or create an email account, verify the email, and set your display name
