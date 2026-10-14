@@ -525,6 +525,43 @@ async function run() {
     }
 
     {
+        const rooms = {
+            r1: Object.assign(liveRoom('host', '0421'), {
+                participants: {
+                    host: { displayName: 'Host', role: 'host', lastSeen: Date.now(), joinedAt: 1 },
+                    bob: { displayName: 'Bob', role: 'viewer', lastSeen: Date.now(), joinedAt: 2 }
+                }
+            })
+        };
+        const { RoomSync, users, storage } = loadRoom({
+            uid: 'bob',
+            rooms,
+            roomCodes: { '0421': { roomId: 'r1' } },
+            users: { bob: { uid: 'bob', createdRooms: {}, joinedRooms: {} } }
+        });
+        storage.setItem('pst_room_id', 'r1');
+        const restored = await RoomSync.tryRestoreRoom();
+        ok(
+            'restore attaches a live guest',
+            !!(restored && restored.roomId === 'r1' && restored.status === 'active'),
+            JSON.stringify(restored)
+        );
+        ok(
+            'restore backfills joinedRooms for a guest',
+            !!(users.bob.joinedRooms && users.bob.joinedRooms.r1 === true),
+            JSON.stringify(users.bob)
+        );
+        await RoomSync.detachRoom();
+        ok('restore then detach clears local room id', storage.getItem('pst_room_id') == null);
+        const listed = await RoomSync.listMyRooms();
+        ok(
+            'guest can list the restored room after detach',
+            listed.some((r) => r.roomId === 'r1'),
+            JSON.stringify(listed)
+        );
+    }
+
+    {
         const { RoomSync, rooms, roomCodes } = loadRoom();
         const snap = await RoomSync.createRoom('River', { players: [], stackAmount: 200 });
         const code = snap.code;

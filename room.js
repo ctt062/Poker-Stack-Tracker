@@ -1244,6 +1244,7 @@
                 return null;
             }
             setRoomStateFromDoc(roomId, data);
+            await rememberJoinedRoom(roomId);
             await applyClaimedDisplayName(data.participants);
             attachListener(roomId);
             startPresence();
