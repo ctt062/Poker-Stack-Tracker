@@ -12,6 +12,8 @@
     <script>
         if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey) {
             document.documentElement.classList.add('auth-pending');
+        } else {
+            document.documentElement.classList.add('app-home');
         }
     </script>
 </head>
@@ -114,7 +116,8 @@
                     <span id="roomRoleBadge" class="room-role-badge" hidden></span>
                 </div>
                 <div class="room-actions">
-                    <button type="button" id="roomBtn" class="btn btn-secondary">Room</button>
+                    <button type="button" id="roomsHomeBtn" class="btn btn-secondary">Rooms</button>
+                    <button type="button" id="roomBtn" class="btn btn-secondary">Share</button>
                     <button type="button" id="roomPeopleBtn" class="btn btn-secondary" hidden title="People in room">People</button>
                 </div>
             </div>
@@ -429,6 +432,78 @@
             <h2>People in room</h2>
             <p class="room-hint">Viewers see live stacks. The room host can grant edit access or kick someone (5 minute rejoin ban). Room host is a permission, not the Host payee on the table.</p>
             <ul id="peopleList" class="people-list"></ul>
+        </div>
+    </div>
+
+    <!-- Home: pick solo, create/join, or reopen a live room -->
+    <div id="homeScreen" class="home-screen" hidden>
+        <div class="home-card">
+            <div class="home-card-top">
+                <h1>Poker Stack Tracker</h1>
+                <button type="button" id="homeAccountBtn" class="account-chip" title="Account and display name">
+                    <span class="account-avatar" id="homeAccountAvatar" aria-hidden="true">?</span>
+                    <span class="account-chip-name" id="homeAccountChipName">You</span>
+                </button>
+            </div>
+            <p id="homeLead" class="auth-lead">Solo stays on this device. Rooms stay in sync until they expire (1 week).</p>
+
+            <button type="button" id="homeSoloBtn" class="btn btn-primary btn-auth">Solo mode</button>
+            <p class="room-field-hint">Local table. Nobody else can see it.</p>
+
+            <div id="homeRoomsPanel" hidden>
+                <div class="room-divider">open a room</div>
+                <div class="form-group" id="homeRakeGroup">
+                    <label>This game</label>
+                    <div class="rake-toggle">
+                        <label class="rake-toggle-option">
+                            <input type="radio" name="homeRakeEnabled" value="no" checked>
+                            <span>No rake</span>
+                        </label>
+                        <label class="rake-toggle-option">
+                            <input type="radio" name="homeRakeEnabled" value="yes">
+                            <span>Rake game</span>
+                        </label>
+                    </div>
+                    <div id="homeRakeDetails" class="rake-details" hidden>
+                        <label for="homeRakeType">Rake structure</label>
+                        <select id="homeRakeType" class="banker-select">
+                            <option value="time">Time collection ($ / player / hour)</option>
+                            <option value="pot">Pot % with cap</option>
+                            <option value="flat">Flat table fee ($ / player)</option>
+                            <option value="custom">Custom note</option>
+                        </select>
+                        <div data-rake-fields="time" class="form-group rake-type-fields">
+                            <label for="homeRakePerHour">$ per player per hour</label>
+                            <input type="number" id="homeRakePerHour" min="0" step="0.01" value="5">
+                        </div>
+                        <div data-rake-fields="pot" class="form-group rake-type-fields" hidden>
+                            <label for="homeRakePercent">Percent of pot</label>
+                            <input type="number" id="homeRakePercent" min="0" max="100" step="0.1" value="5">
+                            <label for="homeRakeCap">Cap $</label>
+                            <input type="number" id="homeRakeCap" min="0" step="0.01" value="5">
+                        </div>
+                        <div data-rake-fields="flat" class="form-group rake-type-fields" hidden>
+                            <label for="homeRakePerPlayer">$ per player</label>
+                            <input type="number" id="homeRakePerPlayer" min="0" step="0.01" value="10">
+                        </div>
+                        <div data-rake-fields="custom" class="form-group rake-type-fields" hidden>
+                            <label for="homeRakeNote">House rule</label>
+                            <input type="text" id="homeRakeNote" maxlength="80" placeholder="e.g. $1 from every pot to the jackpot">
+                        </div>
+                    </div>
+                </div>
+                <button type="button" id="homeCreateRoomBtn" class="btn btn-primary btn-auth">Create room</button>
+                <p class="room-field-hint">Up to 3 hosted rooms. Each lasts 1 week. Starts a new table.</p>
+                <div class="room-divider">or join</div>
+                <div class="form-group room-join-row">
+                    <input type="text" id="homeJoinRoomCode" placeholder="1234" maxlength="5" inputmode="numeric" autocomplete="off" class="room-code-input" aria-label="Room code">
+                    <button type="button" id="homeJoinRoomBtn" class="btn btn-primary">Join</button>
+                </div>
+                <h2 class="home-rooms-heading">Your rooms</h2>
+                <ul id="homeRoomList" class="home-room-list"></ul>
+                <p id="homeRoomEmpty" class="room-hint">No live rooms. Create one or join with a code.</p>
+                <p id="homeRoomError" class="room-error" hidden></p>
+            </div>
         </div>
     </div>
 

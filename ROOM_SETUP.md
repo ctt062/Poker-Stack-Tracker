@@ -17,7 +17,7 @@ Home-game traffic is tiny compared to Firebase free quotas. If you previously us
    - **Google** → Enable → set a support email → Save
    - **Email/Password** → Enable → Save
 3. Do **not** enable Apple Sign-In unless you have an Apple Developer Program membership. The app does not show an Apple button.
-4. Email/password accounts must verify their address before the tracker or rooms unlock. The app sends Firebase's verification email on create and offers Resend. Google sign-in does not send a second code; Google already verified the address. A Gmail password typed into the email form will not work. If someone created a password account first, Continue with Google asks them to sign in with that password once so Google can be connected. On iPhone, Google uses a popup, not a redirect, because GitHub Pages is not the Firebase auth domain.
+4. Email/password accounts must verify their address before home unlocks. The app sends Firebase's verification email on create and offers Resend. Google sign-in does not send a second code; Google already verified the address. A Gmail password typed into the email form will not work. If someone created a password account first, Continue with Google asks them to sign in with that password once so Google can be connected. On iPhone, Google uses a popup, not a redirect, because GitHub Pages is not the Firebase auth domain.
 5. **Authentication → Settings → Authorized domains** must include `localhost` and your GitHub Pages host (for this project, `ctt062.github.io`)
 
 Do not enable Anonymous Auth; the app does not use it. Sign-in and display name behavior is described in [README.md](README.md).
@@ -62,8 +62,8 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 ## 6. Verify
 
-1. Open the app on device A → sign in (Google, or email plus verification) → claim a unique display name if asked → **Room → Create room** → note the code
-2. Device B → sign in → claim a different unique display name → **Join** with the code
+1. Open the app on device A → sign in (Google, or email plus verification) → claim a unique display name if asked → home → **Create room** → note the code
+2. Device B → sign in → claim a different unique display name → home → **Join** with the code
 3. B is **view only**; on A open **People → Allow edit** for B
 4. Edits should appear on the other device within about a second
 
@@ -71,21 +71,23 @@ Web config is public; access control is Auth + Firestore rules. Leave `apiKey` e
 
 | Concept | Behavior |
 |--------|----------|
-| Solo | `localStorage` only (unchanged) |
-| Room | One Firestore doc per room + live `onSnapshot` |
+| Solo | `localStorage` only (unchanged). Opened from home; stays on this device |
+| Home | After sign-in: Solo, create/join, and a list of unexpired rooms you hosted or joined (`users/{uid}.createdRooms` + `joinedRooms`) |
+| Room | One Firestore doc per room + live `onSnapshot`. **Rooms** on the table detaches (keeps you as a participant). **Leave** removes you; **End room** closes the code |
 | Auth | Google or email (`auth.uid`). Email/password users must verify before writes. Unique display names live in `displayNames/{lowercase}` plus `users/{uid}` |
 | Host | Creator; edit; grant/revoke; end room (ending drops the host back to solo with the final numbers) |
 | Editor | Can edit stacks like host |
 | Viewer | Live read-only table |
 | Code | 4-digit code (`0000`-`9999`) in `roomCodes/{code}` → `rooms/{id}` |
 | Room cap | One account can have **3** created rooms at a time (`users/{uid}.createdRooms`). End a room or wait for expiry to create another. |
-| Room lifetime | Each room stores `expiresAt` (~7 days after create). Join, restore, create, and the live listener delete expired rooms and their codes. **Leave** keeps the room and code so you can rejoin. **End room** closes the code for everyone. Ended rooms expire immediately. |
+| Your rooms | Home lists live rooms from `createdRooms` and `joinedRooms`. Ended, expired, abandoned, and rooms you already left are omitted. |
+| Room lifetime | Each room stores `expiresAt` (~7 days after create). Join, restore, create, and the live listener delete expired rooms and their codes. **Leave** keeps the room and code so you can rejoin. **End room** closes the code for everyone. Ended is classified before expiry, so restore, join, list, and the live listener do not treat End room as an expired purge. |
 | Solo data | Joining stashes your solo session. Leaving an **active** room restores that backup. After a room **ends**, devices keep the final shared snapshot as solo and discard the backup. |
 | SDK | When config is present, Firebase scripts load at startup for the sign-in gate. An empty `firebase-config.js` keeps the app fully local |
 
 ## Optional deep link
 
-`https://yoursite/Poker-Stack-Tracker/?room=0421` prefills the join code.
+`https://yoursite/Poker-Stack-Tracker/?room=0421` prefills the join code on home after sign-in. Reloading while a room is open (`pst_room_id`) stays in that room.
 
 ## Cost / limits
 

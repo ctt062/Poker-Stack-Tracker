@@ -99,8 +99,12 @@ async function withPage(browser, fn, viewport) {
     }
 }
 
-async function interceptEmptyFirebase(page) {
+async function interceptEmptyFirebase(page, opts = {}) {
     await page.setRequestInterception(true);
+    let releaseScript = () => {};
+    const scriptGate = opts.holdScript
+        ? new Promise((resolve) => { releaseScript = resolve; })
+        : Promise.resolve();
     page.on('request', (req) => {
         if (req.url().includes('firebase-config.js')) {
             req.respond({
@@ -110,12 +114,42 @@ async function interceptEmptyFirebase(page) {
             });
             return;
         }
+        if (opts.holdScript && /\/script\.js(\?|$)/.test(req.url())) {
+            scriptGate.then(() => req.continue()).catch(() => {
+                try { req.abort('failed'); } catch (e) { /* already handled */ }
+            });
+            return;
+        }
         req.continue();
     });
+    return { releaseScript };
 }
 
 async function gotoApp(page, origin) {
     await page.goto(`${origin}/index.html`, { waitUntil: 'domcontentloaded' });
+}
+
+async function waitHome(page) {
+    await page.waitForFunction(() => {
+        const home = document.getElementById('homeScreen');
+        return document.documentElement.classList.contains('app-home')
+            && !document.documentElement.classList.contains('auth-pending')
+            && home
+            && getComputedStyle(home).display === 'flex';
+    });
+    await page.waitForSelector('#homeSoloBtn', { visible: true });
+}
+
+async function enterSolo(page) {
+    await waitHome(page);
+    await tap(page, '#homeSoloBtn');
+    await page.waitForFunction(() => {
+        const home = document.getElementById('homeScreen');
+        return !document.documentElement.classList.contains('app-home')
+            && home
+            && (home.hidden || getComputedStyle(home).display === 'none');
+    });
+    await page.waitForSelector('#addPlayerBtn', { visible: true });
 }
 
 async function tap(page, selector) {
@@ -642,17 +676,96 @@ async function run() {
             });
             await page.waitForFunction(() => {
                 const gate = document.getElementById('authGate');
-                return gate && getComputedStyle(gate).display === 'none';
+                const home = document.getElementById('homeScreen');
+                return gate && getComputedStyle(gate).display === 'none'
+                    && home && getComputedStyle(home).display === 'flex';
             });
             const unlocked = await page.evaluate(() => ({
                 pending: document.documentElement.classList.contains('auth-pending'),
                 gate: getComputedStyle(document.getElementById('authGate')).display,
-                chip: (document.getElementById('accountChipName') || {}).textContent,
-                house: Array.from(document.querySelectorAll('.house-row .player-name')).map((el) => el.textContent)
+                home: getComputedStyle(document.getElementById('homeScreen')).display,
+                chip: (document.getElementById('homeAccountChipName') || {}).textContent,
+                solo: (document.getElementById('homeSoloBtn') || {}).textContent,
+                create: (document.getElementById('homeCreateRoomBtn') || {}).textContent,
+                join: !!(document.getElementById('homeJoinRoomCode') && document.getElementById('homeJoinRoomBtn')),
+                empty: (document.getElementById('homeRoomEmpty') || {}).textContent,
+                roomsPanelHidden: !!(document.getElementById('homeRoomsPanel') || {}).hidden
             }));
-            ok('name plus signed-in snapshot unlocks tracker', unlocked.pending === false && unlocked.gate === 'none', JSON.stringify(unlocked));
-            ok('account chip shows saved name', unlocked.chip === 'River', unlocked.chip);
-            ok('house rows present after auth unlock', unlocked.house.includes('Dealer') && unlocked.house.includes('Host'), JSON.stringify(unlocked.house));
+            ok('name plus signed-in snapshot shows home', unlocked.pending === false && unlocked.gate === 'none' && unlocked.home === 'flex', JSON.stringify(unlocked));
+            ok('home account chip shows saved name', unlocked.chip === 'River', unlocked.chip);
+            ok(
+                'home offers solo, create, and join',
+                /solo/i.test(unlocked.solo) && /create room/i.test(unlocked.create) && unlocked.join && unlocked.roomsPanelHidden === false,
+                JSON.stringify(unlocked)
+            );
+            ok('home empty rooms copy', /no live rooms/i.test(unlocked.empty), unlocked.empty);
+            await shot(page, 'home-after-display-name.png');
+
+            await page.evaluate(() => {
+                RoomSync.isConfigured = () => true;
+                RoomSync.listMyRooms = async () => ([{
+                    roomId: 'r1',
+                    code: '0421',
+                    sessionName: 'Friday night',
+                    role: 'host',
+                    expiresAt: Date.now() + 5 * 86400000,
+                    playerCount: 3
+                }]);
+                RoomSync.enterRoom = async (id) => {
+                    window.__enteredRoom = id;
+                    return {
+                        roomId: id,
+                        code: '0421',
+                        role: 'host',
+                        status: 'active',
+                        canEdit: true,
+                        isHost: true,
+                        displayName: 'River'
+                    };
+                };
+                RoomSync.getRoomSnapshot = () => ({
+                    roomId: 'r1',
+                    code: '0421',
+                    role: 'host',
+                    status: 'active',
+                    canEdit: true,
+                    isHost: true,
+                    displayName: 'River'
+                });
+                refreshHomeRooms();
+            });
+            await page.waitForFunction(() => {
+                const empty = document.getElementById('homeRoomEmpty');
+                const rows = document.querySelectorAll('#homeRoomList .home-room-row');
+                return empty && empty.hidden && rows.length === 1;
+            });
+            const row = await page.evaluate(() => {
+                const btn = document.querySelector('#homeRoomList .home-room-row');
+                return {
+                    title: btn ? (btn.querySelector('.home-room-row-title') || {}).textContent : '',
+                    meta: btn ? (btn.querySelector('.home-room-row-meta') || {}).textContent : '',
+                    h: btn ? Math.round(btn.getBoundingClientRect().height) : 0
+                };
+            });
+            ok('home lists a live hosted room', row.title === 'Friday night' && /0421/.test(row.meta) && /Room host/.test(row.meta), JSON.stringify(row));
+            ok('home room row is a 44px tap target', row.h >= 44, JSON.stringify(row));
+            await shot(page, 'home-with-room-row.png');
+            await tap(page, '#homeRoomList .home-room-row');
+            await page.waitForFunction(() => !document.documentElement.classList.contains('app-home'));
+            const entered = await page.evaluate(() => window.__enteredRoom);
+            ok('tapping a home room opens it', entered === 'r1', String(entered));
+            await tap(page, '#roomsHomeBtn');
+            await waitHome(page);
+            ok('Rooms from a live room returns to home', true);
+            await page.evaluate(() => {
+                RoomSync.getRoomSnapshot = () => null;
+                RoomSync.isInRoom = () => false;
+                updateRoomStatusBar(null);
+            });
+
+            await enterSolo(page);
+            const house = await page.evaluate(() => Array.from(document.querySelectorAll('.house-row .player-name')).map((el) => el.textContent));
+            ok('house rows present after solo from home', house.includes('Dealer') && house.includes('Host'), JSON.stringify(house));
             await shot(page, 'tracker-after-display-name.png');
 
             await tap(page, '#roomBtn');
@@ -772,7 +885,27 @@ async function run() {
             await gotoApp(page, origin);
             await page.evaluate(() => localStorage.clear());
             await page.reload({ waitUntil: 'domcontentloaded' });
-            await page.waitForSelector('#accountBtn', { visible: true });
+            await waitHome(page);
+
+            const home = await page.evaluate(() => ({
+                pending: document.documentElement.classList.contains('auth-pending'),
+                gateDisplay: getComputedStyle(document.getElementById('authGate')).display,
+                home: getComputedStyle(document.getElementById('homeScreen')).display,
+                solo: (document.getElementById('homeSoloBtn') || {}).textContent,
+                roomsPanelHidden: !!(document.getElementById('homeRoomsPanel') || {}).hidden,
+                emptyHidden: !!(document.getElementById('homeRoomEmpty') || {}).hidden
+            }));
+            ok('solo skips auth gate and shows home', home.pending === false && home.gateDisplay === 'none' && home.home === 'flex', JSON.stringify(home));
+            ok('home hides create/join without Firebase', home.roomsPanelHidden === true && /solo/i.test(home.solo), JSON.stringify(home));
+            await shot(page, 'home-desktop.png');
+
+            await enterSolo(page);
+            const roomsBtn = await page.$eval('#roomsHomeBtn', (el) => el.textContent);
+            ok('tracker has a Rooms back button', /rooms/i.test(roomsBtn), roomsBtn);
+            await tap(page, '#roomsHomeBtn');
+            await waitHome(page);
+            ok('Rooms from solo returns to home', true);
+            await enterSolo(page);
 
             const solo = await page.evaluate(() => ({
                 pending: document.documentElement.classList.contains('auth-pending'),
@@ -1213,6 +1346,155 @@ async function run() {
             await shot(page, 'solo-account-room-name.png');
         });
 
+        await scenario('no-config first paint covers the table', async (page) => {
+            const { releaseScript } = await interceptEmptyFirebase(page, { holdScript: true });
+            const loaded = page.goto(`${origin}/index.html`, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => document.getElementById('homeScreen') && document.querySelector('body > .container'));
+            const firstPaint = await page.evaluate(() => {
+                const container = document.querySelector('body > .container');
+                const home = document.getElementById('homeScreen');
+                const gate = document.getElementById('authGate');
+                return {
+                    appHome: document.documentElement.classList.contains('app-home'),
+                    pending: document.documentElement.classList.contains('auth-pending'),
+                    containerVis: container ? getComputedStyle(container).visibility : '',
+                    homeDisplay: home ? getComputedStyle(home).display : '',
+                    gateDisplay: gate ? getComputedStyle(gate).display : ''
+                };
+            });
+            ok(
+                'no-config first paint hides the table without the auth gate',
+                firstPaint.appHome === true
+                    && firstPaint.pending === false
+                    && firstPaint.containerVis === 'hidden'
+                    && firstPaint.gateDisplay === 'none',
+                JSON.stringify(firstPaint)
+            );
+            releaseScript();
+            await loaded;
+            await waitHome(page);
+            const afterBoot = await page.evaluate(() => {
+                const container = document.querySelector('body > .container');
+                return {
+                    home: getComputedStyle(document.getElementById('homeScreen')).display,
+                    containerVis: container ? getComputedStyle(container).visibility : ''
+                };
+            });
+            ok(
+                'no-config boot stays on home with the table covered',
+                afterBoot.home === 'flex' && afterBoot.containerVis === 'hidden',
+                JSON.stringify(afterBoot)
+            );
+        });
+
+        await scenario('restore covering and ended backup', async (page) => {
+            await gotoApp(page, origin);
+            await waitAuthGate(page);
+            const covered = await page.evaluate(() => {
+                const claimed = {
+                    configured: true,
+                    signedIn: true,
+                    displayName: 'River',
+                    email: '',
+                    emailVerified: true,
+                    provider: 'google.com',
+                    providerLabel: 'Google'
+                };
+                if (window.AppAuth) {
+                    AppAuth.getDisplayName = () => 'River';
+                    AppAuth.snapshot = () => claimed;
+                }
+                return new Promise((resolve) => {
+                    RoomSync.tryRestoreRoom = async () => {
+                        const container = document.querySelector('body > .container');
+                        const gate = document.getElementById('authGate');
+                        resolve({
+                            pending: document.documentElement.classList.contains('auth-pending'),
+                            appHome: document.documentElement.classList.contains('app-home'),
+                            containerVis: container ? getComputedStyle(container).visibility : '',
+                            gate: gate ? getComputedStyle(gate).display : ''
+                        });
+                        return null;
+                    };
+                    applyAuthSnapshot(claimed);
+                });
+            });
+            ok(
+                'signed-in restore keeps covering until destination is chosen',
+                covered.pending === true
+                    && covered.appHome === false
+                    && covered.containerVis === 'hidden'
+                    && covered.gate === 'flex',
+                JSON.stringify(covered)
+            );
+        });
+
+        await scenario('ended restore keeps finals and drops backup', async (page) => {
+            await interceptEmptyFirebase(page);
+            await gotoApp(page, origin);
+            await waitHome(page);
+
+            function sampleGame(sessionName, playerName) {
+                return {
+                    blindStructure: { small: 1, big: 2 },
+                    stackAmount: 200,
+                    players: [{ id: 1, name: playerName, totalBuyIn: 50, cashOut: 0 }],
+                    sessionName,
+                    bankerName: 'Banker',
+                    darkMode: true
+                };
+            }
+
+            async function runRestore(mode, finals, solo) {
+                return page.evaluate(async (kind, roomGame, soloGame) => {
+                    localStorage.setItem('pokerStackTracker', JSON.stringify(roomGame));
+                    localStorage.setItem('pokerStackTracker_soloBackup', JSON.stringify(soloGame));
+                    if (kind === 'error') localStorage.setItem('pst_room_id', 'held');
+                    else localStorage.removeItem('pst_room_id');
+                    RoomSync.tryRestoreRoom = async () => {
+                        if (kind === 'ended') return { restore: 'ended' };
+                        return null;
+                    };
+                    restoreJoinedRoom();
+                    await new Promise((r) => setTimeout(r, 0));
+                    return {
+                        session: JSON.parse(localStorage.getItem('pokerStackTracker') || '{}').sessionName,
+                        backup: localStorage.getItem('pokerStackTracker_soloBackup'),
+                        roomId: localStorage.getItem('pst_room_id'),
+                        home: document.documentElement.classList.contains('app-home')
+                    };
+                }, mode, finals, solo);
+            }
+
+            const endedStore = await runRestore('ended', sampleGame('Finals', 'Ann'), sampleGame('Old solo', 'Bob'));
+            ok(
+                'ended restore keeps final numbers and drops the solo backup',
+                endedStore.session === 'Finals' && endedStore.backup == null && endedStore.home === true,
+                JSON.stringify(endedStore)
+            );
+
+            const leftStore = await runRestore('left', sampleGame('Finals', 'Ann'), sampleGame('Old solo', 'Bob'));
+            ok(
+                'unavailable restore puts the solo backup back',
+                leftStore.session === 'Old solo' && leftStore.backup == null,
+                JSON.stringify(leftStore)
+            );
+
+            const errorStore = await runRestore('error', sampleGame('Finals', 'Ann'), sampleGame('Old solo', 'Bob'));
+            ok(
+                'restore error leaves the backup and room id in place',
+                errorStore.session === 'Finals'
+                    && errorStore.backup != null
+                    && JSON.parse(errorStore.backup).sessionName === 'Old solo'
+                    && errorStore.roomId === 'held',
+                JSON.stringify({
+                    session: errorStore.session,
+                    roomId: errorStore.roomId,
+                    backupSession: errorStore.backup && JSON.parse(errorStore.backup).sessionName
+                })
+            );
+        });
+
         await scenario('legacy localStorage defaults', async (page) => {
             await interceptEmptyFirebase(page);
             await gotoApp(page, origin);
@@ -1227,6 +1509,7 @@ async function run() {
                 }));
             });
             await page.reload({ waitUntil: 'domcontentloaded' });
+            await enterSolo(page);
             await page.waitForSelector('#playerTableBody');
             await page.waitForFunction(() => document.querySelectorAll('.house-row').length === 2);
             const legacy = await page.evaluate(() => ({
@@ -1250,6 +1533,9 @@ async function run() {
             await gotoApp(page, origin);
             await page.evaluate(() => localStorage.clear());
             await page.reload({ waitUntil: 'domcontentloaded' });
+            await waitHome(page);
+            await shot(page, 'home-mobile.png');
+            await enterSolo(page);
             await page.waitForSelector('#addPlayerBtn', { visible: true });
             await addPlayer(page, 'Alice', 200);
             await shot(page, 'solo-tracker-mobile.png');
