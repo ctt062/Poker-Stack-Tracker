@@ -46,6 +46,9 @@ let gameState = {
 let undoStack = [];
 let clockTimer = null;
 let editingHouseId = null;
+let editingBuyInId = null;
+let buyInEditorFocus = false;
+let ignoreBuyInBlur = false;
 let roomUiReady = false;
 let appUnlocked = false;
 let verifyPollId = null;
@@ -470,10 +473,6 @@ if (copyResultsBtn) {
 }
 initNotesField();
 
-const copySettlementBtn = document.getElementById('copySettlementBtn');
-if (copySettlementBtn) {
-    copySettlementBtn.addEventListener('click', () => copyResultsToClipboard(copySettlementBtn));
-}
 const chopLeftoverBtn = document.getElementById('chopLeftoverBtn');
 if (chopLeftoverBtn) {
     chopLeftoverBtn.addEventListener('click', () => chopLeftoverAmongWinners());
@@ -1102,10 +1101,44 @@ function clearUndo() {
     updateUndoBtn();
 }
 
-function recordStackUndo(playerId, previousBuyIn) {
-    undoStack.push({ playerId, previousBuyIn });
+function captureMoneyState() {
+    return {
+        players: seatedPlayers().map((p) => ({
+            id: p.id,
+            totalBuyIn: p.totalBuyIn,
+            cashOut: p.cashOut
+        })),
+        house: (gameState.house || []).map((h) => ({
+            id: h.id,
+            cashOut: h.cashOut
+        }))
+    };
+}
+
+function applyMoneyState(snap) {
+    if (!snap) return;
+    (snap.players || []).forEach((s) => {
+        const player = gameState.players.find((p) => p.id === s.id);
+        if (!player) return;
+        player.totalBuyIn = s.totalBuyIn;
+        player.cashOut = s.cashOut;
+    });
+    (snap.house || []).forEach((s) => {
+        const row = (gameState.house || []).find((h) => h.id === s.id);
+        if (!row) return;
+        row.cashOut = s.cashOut;
+    });
+}
+
+function recordUndo() {
+    undoStack.push(captureMoneyState());
     if (undoStack.length > 40) undoStack.shift();
     updateUndoBtn();
+}
+
+function closeBuyInEditor() {
+    editingBuyInId = null;
+    buyInEditorFocus = false;
 }
 
 function undoLastStack() {
@@ -1115,13 +1148,10 @@ function undoLastStack() {
         updateUndoBtn();
         return;
     }
-    const player = seatedPlayers().find((p) => p.id === last.playerId);
-    if (player) {
-        player.totalBuyIn = last.previousBuyIn;
-        saveGameState();
-        updateDisplay();
-    }
-    updateUndoBtn();
+    closeBuyInEditor();
+    applyMoneyState(last);
+    saveGameState();
+    updateDisplay();
 }
 
 function updateHouseCashOut(houseId, amount) {
@@ -1129,7 +1159,13 @@ function updateHouseCashOut(houseId, amount) {
     ensureHouseState();
     const row = gameState.house.find((h) => h.id === houseId);
     if (!row) return;
-    row.cashOut = Math.max(0, money(amount));
+    const next = Math.max(0, money(amount));
+    if (next === money(row.cashOut)) {
+        updateDisplay();
+        return;
+    }
+    recordUndo();
+    row.cashOut = next;
     saveGameState();
     updateDisplay();
 }
@@ -1183,11 +1219,16 @@ function addPlayer(name, buyIn) {
 function updateCashOut(playerId, amount) {
     if (!assertCanEdit()) return;
     const player = gameState.players.find(p => p.id === playerId);
-    if (player) {
-        player.cashOut = amount;
-        saveGameState();
+    if (!player) return;
+    const next = Math.max(0, money(amount));
+    if (next === money(player.cashOut)) {
         updateDisplay();
+        return;
     }
+    recordUndo();
+    player.cashOut = next;
+    saveGameState();
+    updateDisplay();
 }
 
 function updateBuyIn(playerId, amount) {
@@ -1199,17 +1240,63 @@ function updateBuyIn(playerId, amount) {
         updateDisplay();
         return;
     }
-    recordStackUndo(playerId, player.totalBuyIn);
+    recordUndo();
     player.totalBuyIn = next;
     saveGameState();
     updateDisplay();
 }
 
-function beginEditBuyIn(playerId, cell) {
+function beginEditBuyIn(playerId) {
     if (!assertCanEdit()) return;
     const player = gameState.players.find(p => p.id === playerId);
-    if (!player || !cell) return;
-    if (cell.querySelector('input')) return;
+    if (!player) return;
+    editingBuyInId = playerId;
+    buyInEditorFocus = true;
+    updateDisplay();
+}
+
+function stepBuyIn(playerId, dir) {
+    if (!assertCanEdit()) return;
+    const player = gameState.players.find(p => p.id === playerId);
+    if (!player) return;
+    const input = document.querySelector('.buyin-input');
+    let base = player.totalBuyIn;
+    if (input) {
+        const typed = parseFloat(input.value);
+        if (Number.isFinite(typed)) base = typed;
+    }
+    const stack = Math.max(0, money(gameState.stackAmount));
+    ignoreBuyInBlur = true;
+    buyInEditorFocus = false;
+    editingBuyInId = playerId;
+    try {
+        updateBuyIn(playerId, Math.max(0, money(base + dir * stack)));
+    } finally {
+        ignoreBuyInBlur = false;
+    }
+}
+
+function renderBuyInEditor(player, cell) {
+    const wrap = document.createElement('div');
+    wrap.className = 'buyin-edit';
+
+    const minus = document.createElement('button');
+    minus.type = 'button';
+    minus.className = 'buyin-step buyin-step-minus';
+    minus.textContent = '-';
+    minus.setAttribute('aria-label', 'Minus one stack');
+    minus.title = 'Minus one stack';
+    minus.addEventListener('mousedown', (e) => e.preventDefault());
+    minus.addEventListener('click', () => stepBuyIn(player.id, -1));
+
+    const plus = document.createElement('button');
+    plus.type = 'button';
+    plus.className = 'buyin-step buyin-step-plus';
+    plus.textContent = '+';
+    plus.setAttribute('aria-label', 'Plus one stack');
+    plus.title = 'Plus one stack';
+    plus.addEventListener('mousedown', (e) => e.preventDefault());
+    plus.addEventListener('click', () => stepBuyIn(player.id, 1));
 
     const input = document.createElement('input');
     input.type = 'number';
@@ -1218,32 +1305,47 @@ function beginEditBuyIn(playerId, cell) {
     input.step = '0.01';
     input.value = String(player.totalBuyIn);
     input.setAttribute('aria-label', 'Total buy-in');
-    cell.textContent = '';
-    cell.appendChild(input);
-    input.focus();
-    input.select();
 
     let finished = false;
-    const commit = () => {
+    const commitAndClose = () => {
         if (finished) return;
         finished = true;
-        updateBuyIn(playerId, parseFloat(input.value));
+        const raw = input.value;
+        closeBuyInEditor();
+        updateBuyIn(player.id, parseFloat(raw));
     };
     const cancel = () => {
         if (finished) return;
         finished = true;
+        closeBuyInEditor();
         updateDisplay();
     };
-    input.addEventListener('blur', commit);
+    input.addEventListener('blur', (e) => {
+        if (ignoreBuyInBlur) return;
+        if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+        commitAndClose();
+    });
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            input.blur();
+            commitAndClose();
         } else if (e.key === 'Escape') {
             e.preventDefault();
             cancel();
         }
     });
+
+    wrap.appendChild(minus);
+    wrap.appendChild(input);
+    wrap.appendChild(plus);
+    cell.appendChild(wrap);
+    if (buyInEditorFocus) {
+        buyInEditorFocus = false;
+        queueMicrotask(() => {
+            input.focus();
+            input.select();
+        });
+    }
 }
 
 function editPlayerName(playerId) {
@@ -1317,43 +1419,6 @@ function calculateTotalBalance() {
     return cashTotals().balance;
 }
 
-function calculateSettlement() {
-    ensureHouseState();
-    const parties = [];
-    seatedPlayers().forEach((p) => {
-        const net = calculatePnL(p);
-        if (Math.abs(net) >= 0.005) parties.push({ name: p.name, net });
-    });
-    gameState.house.forEach((h) => {
-        const net = money(h.cashOut);
-        if (net >= 0.005) parties.push({ name: h.name, net });
-    });
-
-    const debtors = parties
-        .filter((p) => p.net < 0)
-        .map((p) => ({ name: p.name, amount: money(-p.net) }))
-        .sort((a, b) => b.amount - a.amount);
-    const creditors = parties
-        .filter((p) => p.net > 0)
-        .map((p) => ({ name: p.name, amount: money(p.net) }))
-        .sort((a, b) => b.amount - a.amount);
-
-    const transfers = [];
-    let i = 0;
-    let j = 0;
-    while (i < debtors.length && j < creditors.length) {
-        const pay = money(Math.min(debtors[i].amount, creditors[j].amount));
-        if (pay >= 0.005) {
-            transfers.push({ from: debtors[i].name, to: creditors[j].name, amount: pay });
-        }
-        debtors[i].amount = money(debtors[i].amount - pay);
-        creditors[j].amount = money(creditors[j].amount - pay);
-        if (debtors[i].amount < 0.005) i += 1;
-        if (creditors[j].amount < 0.005) j += 1;
-    }
-    return transfers;
-}
-
 function winningPlayers() {
     return seatedPlayers().filter((p) => calculatePnL(p) > 0.005);
 }
@@ -1382,6 +1447,7 @@ function chopLeftoverAmongWinners() {
     if (!confirm(`Chop ${formatMoney(Math.abs(leftover))} ${label} among ${who} by P&L share? Their cash-outs will change so the books close.`)) {
         return;
     }
+    recordUndo();
     const parts = winners.map((p) => {
         const exact = leftoverCents * (calculatePnL(p) / totalWin);
         const base = exact < 0 ? Math.ceil(exact) : Math.floor(exact);
@@ -1441,14 +1507,6 @@ function formatResultsForWhatsApp() {
         lines.push('');
         lines.push('*Notes*');
         lines.push(notes);
-    }
-    const transfers = calculateSettlement();
-    if (transfers.length) {
-        lines.push('');
-        lines.push('*Settlement*');
-        transfers.forEach((t) => {
-            lines.push(`${t.from} pays ${t.to}  ${formatMoney(t.amount)}`);
-        });
     }
     return lines.join('\n');
 }
@@ -1599,7 +1657,6 @@ function updateDisplay() {
     renderBalanceBreakdown(totals);
     updateRakeHint();
     renderChopLeftoverButton(totals);
-    renderSettlement();
     syncNotesField();
     updateUndoBtn();
     applyEditabilityUI();
@@ -1644,37 +1701,6 @@ function renderBalanceBreakdown(totals) {
     });
 }
 
-function renderSettlement() {
-    const section = document.getElementById('settlementSection');
-    const list = document.getElementById('settlementList');
-    if (!section || !list) return;
-
-    const players = seatedPlayers();
-    const anyoneCashed = players.some((p) => (p.cashOut || 0) > 0)
-        || gameState.house.some((h) => (h.cashOut || 0) > 0);
-    const transfers = anyoneCashed ? calculateSettlement() : [];
-
-    list.innerHTML = '';
-    if (!anyoneCashed || transfers.length === 0) {
-        section.hidden = true;
-        return;
-    }
-
-    section.hidden = false;
-    transfers.forEach((t) => {
-        const li = document.createElement('li');
-        li.className = 'settlement-item';
-        const who = document.createElement('span');
-        who.textContent = `${t.from} pays ${t.to}`;
-        const amt = document.createElement('span');
-        amt.className = 'amount';
-        amt.textContent = formatMoney(t.amount);
-        li.appendChild(who);
-        li.appendChild(amt);
-        list.appendChild(li);
-    });
-}
-
 // Player data can come from other devices in a room, so rows are built with DOM
 // APIs (never string interpolation) to keep names and ids out of markup.
 function buildPlayerRow(player, editable) {
@@ -1692,13 +1718,15 @@ function buildPlayerRow(player, editable) {
     nameCell.appendChild(nameSpan);
 
     const buyInCell = document.createElement('td');
-    if (editable) {
+    if (editable && player.id === editingBuyInId) {
+        renderBuyInEditor(player, buyInCell);
+    } else if (editable) {
         const buyInBtn = document.createElement('button');
         buyInBtn.type = 'button';
         buyInBtn.className = 'buyin-amount';
-        buyInBtn.title = 'Tap to type a buy-in';
+        buyInBtn.title = 'Tap to type a buy-in or add/minus one stack';
         buyInBtn.textContent = `$${player.totalBuyIn.toFixed(2)}`;
-        buyInBtn.addEventListener('click', () => beginEditBuyIn(player.id, buyInCell));
+        buyInBtn.addEventListener('click', () => beginEditBuyIn(player.id));
         buyInCell.appendChild(buyInBtn);
     } else {
         buyInCell.textContent = `$${player.totalBuyIn.toFixed(2)}`;
@@ -1932,6 +1960,7 @@ function applyRemoteGame(remoteGame) {
     Object.assign(gameState, next);
     // Keep theme prefs local; persist shared fields locally for offline view
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+    closeBuyInEditor();
     clearUndo();
     updateDisplay();
 }
@@ -2023,14 +2052,6 @@ function exportToExcel() {
     const notes = normalizeNotes(gameState.notes).trim();
     if (notes) {
         csvContent += `Notes,${csvCell(notes)},,,\n`;
-    }
-
-    const transfers = calculateSettlement();
-    if (transfers.length) {
-        csvContent += `\nSettlement,,,,\n`;
-        transfers.forEach((t) => {
-            csvContent += `${csvCell(t.from + ' pays ' + t.to)},${t.amount.toFixed(2)},,,\n`;
-        });
     }
 
     // Add blind structure if set
@@ -2578,6 +2599,7 @@ function showTracker() {
 }
 
 function showHome() {
+    closeBuyInEditor();
     stopVerifyPoll();
     document.documentElement.classList.remove('auth-pending');
     document.body.classList.remove('auth-pending');

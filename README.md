@@ -9,14 +9,14 @@ A minimalist web application for tracking chip stacks during poker games.
 - **Blind Structure**: Set small and big blind amounts, or pick a 0.5/1, 1/2, 1/3, 2/5 preset (sets the default stack too)
 - **Rake**: Mark a session as no-rake or rake (time, pot % with cap, flat fee, or a custom note). Chosen when creating a room and from the session chip in solo
 - **Sign-in**: When Firebase is configured, Google or email is required before home. Continue with Google uses your Google session (no extra email code; Google already verified it). A Gmail password typed into the email form will not work. Create an email account with a unique display name, then verify the email before home unlocks. If that Gmail already has a password, Google asks you to sign in with the password once to connect. Google users pick a display name if they do not have one yet. You can change it later in Settings. Nobody else can use that name until you change it
-- **Player Management**: Add players with their buy-in amounts. Tap a player's total buy-in to type a new amount
+- **Player Management**: Add players with their buy-in amounts. Tap a player's total buy-in to type a new amount, or use + / - to add or subtract one stack
 - **Dealer and Host**: Always-on house rows (default $0, never negative) for tips and host pay. Count toward cash balance, not player count
-- **Stack Tracking**: Tap a player's total buy-in to type a new amount, plus undo for the last buy-in change
-- **Cash Out Tracking**: Record cash-out amounts for each player
+- **Stack Tracking**: Tap a player's total buy-in to type a new amount, or press + / - for one stack. Undo covers the last buy-in or cash-out change
+- **Cash Out Tracking**: Record cash-out amounts for each player. Undo reverts a mistyped cash-out
 - **P&L Calculation**: Automatic profit and loss calculation per player
 - **Balance Overview**: Buy-ins, player cash-outs, house take, and leftover
 - **Notes**: A text box under the cash balance for hosts and editors to jot session notes (viewers can read them)
-- **Settlement**: Who pays whom after cash-out, including Dealer and Host. Tick Paid when cash has changed hands. Copy the results for WhatsApp. Chop leftover among winners by P&L share so the books close
+- **Paid and leftover**: Tick Paid when cash has changed hands. Chop leftover among winners by P&L share so the books close. Copy the P&L results for WhatsApp
 - **Session clock**: Start, pause (becomes Resume), and reset elapsed time (used for time-rake hints)
 - **Action clock**: Header clock button opens a full-screen countdown (30s, 60s, 120s, or custom; default 60s) when a player is on the clock
 - **Data Persistence**: Automatically saves game state to browser localStorage
