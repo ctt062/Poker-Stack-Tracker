@@ -458,6 +458,10 @@ body.compact-mode .buyin-input {
     width: 65px;
 }
 
+body.compact-mode .buyin-edit .buyin-input {
+    width: 64px;
+}
+
 body.compact-mode .balance-section {
     padding: 12px;
     margin-bottom: 16px;
@@ -1472,7 +1476,7 @@ body.room-view-only .session-clock {
     }
 }
 
-/* ---- Rake, house rows, clock, settlement ---- */
+/* ---- Rake, house rows, clock, paid ---- */
 .rake-display[data-rake="on"] {
     border-color: var(--house-color, #a78bfa);
     color: var(--house-color, #a78bfa);
@@ -1700,27 +1704,6 @@ tr.is-settled .buyin-amount {
     justify-content: center;
 }
 
-.settlement-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 4px;
-}
-
-.settlement-section {
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 24px;
-}
-
-.settlement-section h3 {
-    font-size: 16px;
-    margin-bottom: 0;
-}
-
 body.compact-mode .settle-toggle {
     width: 22px;
     height: 22px;
@@ -1729,45 +1712,6 @@ body.compact-mode .settle-toggle {
 body.compact-mode .settle-toggle svg {
     width: 11px;
     height: 11px;
-}
-
-.settlement-hint {
-    font-size: 13px;
-    opacity: 0.7;
-    margin-bottom: 12px;
-}
-
-.settlement-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.settlement-item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    min-width: 0;
-}
-
-.settlement-item .amount {
-    font-weight: 700;
-    color: var(--accent-primary);
-    font-variant-numeric: tabular-nums;
-}
-
-.settlement-empty {
-    opacity: 0.7;
-    font-size: 13px;
 }
 
 .people-role.role-host {
@@ -1808,11 +1752,6 @@ body.compact-mode .house-badge {
         min-width: 180px;
         justify-content: space-between;
     }
-
-    .settlement-item {
-        flex-direction: column;
-        align-items: flex-start;
-    }
 }
 
 .room-display-name-readonly {
@@ -1843,8 +1782,101 @@ body.compact-mode .house-badge {
     background: rgba(16, 163, 127, 0.1);
 }
 
+.buyin-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+}
+
+.buyin-step {
+    flex: 0 0 auto;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.buyin-step-minus {
+    background-color: var(--accent-warning);
+}
+
+.buyin-step-plus {
+    background-color: var(--accent-primary);
+}
+
+.buyin-step-minus:hover {
+    background-color: #ea580c;
+}
+
+.buyin-step-plus:hover {
+    background-color: var(--accent-hover);
+}
+
 .buyin-input {
     width: 90px;
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.buyin-input::-webkit-outer-spin-button,
+.buyin-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.buyin-edit .buyin-input {
+    width: 72px;
+    min-width: 0;
+    flex: 1 1 56px;
+}
+
+body.compact-mode .buyin-step {
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 16px;
+}
+
+@media (max-width: 640px) {
+    tr:has(.buyin-edit) td {
+        vertical-align: top;
+    }
+
+    .buyin-edit {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+        gap: 4px;
+    }
+
+    .buyin-edit .buyin-input {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        width: 100%;
+        flex: none;
+    }
+
+    .buyin-step-minus {
+        grid-row: 2;
+        grid-column: 1;
+    }
+
+    .buyin-step-plus {
+        grid-row: 2;
+        grid-column: 2;
+    }
+
+    .buyin-step {
+        min-width: 36px;
+        min-height: 36px;
+        width: 100%;
+    }
 }
 
 .account-chip {

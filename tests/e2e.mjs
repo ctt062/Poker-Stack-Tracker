@@ -929,23 +929,25 @@ async function run() {
             const notesBox = await page.evaluate(() => {
                 const balance = document.querySelector('.balance-section');
                 const notes = document.querySelector('.notes-section');
-                const settlement = document.getElementById('settlementSection');
+                const actions = document.querySelector('.action-buttons');
                 const field = document.getElementById('sessionNotes');
                 const heading = notes ? (notes.querySelector('h3') || {}).textContent : '';
                 return {
                     afterBalance: !!(balance && notes && balance.nextElementSibling === notes),
-                    beforeSettlement: !!(notes && settlement && notes.nextElementSibling === settlement),
+                    beforeActions: !!(notes && actions && notes.nextElementSibling === actions),
                     heading,
                     tag: field ? field.tagName : '',
                     readOnly: field ? field.readOnly : null,
-                    value: field ? field.value : null
+                    value: field ? field.value : null,
+                    settlement: !!document.getElementById('settlementSection')
                 };
             });
             ok(
                 'notes box sits after total cash balance',
-                notesBox.afterBalance && notesBox.beforeSettlement && notesBox.heading === 'Notes' && notesBox.tag === 'TEXTAREA' && notesBox.readOnly === false && notesBox.value === '',
+                notesBox.afterBalance && notesBox.beforeActions && notesBox.heading === 'Notes' && notesBox.tag === 'TEXTAREA' && notesBox.readOnly === false && notesBox.value === '',
                 JSON.stringify(notesBox)
             );
+            ok('settlement box is gone', notesBox.settlement === false, JSON.stringify(notesBox));
             await page.focus('#sessionNotes');
             await page.$eval('#sessionNotes', (el) => {
                 el.value = 'Straddle on seat 3';
@@ -1065,6 +1067,63 @@ async function run() {
                 return el && el.textContent === '$200.00';
             });
             ok('undo restores typed buy-in', true);
+
+            await tap(page, '.buyin-amount');
+            await page.waitForSelector('.buyin-step-plus');
+            const buyInEdit = await page.evaluate(() => ({
+                plus: !!document.querySelector('.buyin-step-plus'),
+                minus: !!document.querySelector('.buyin-step-minus'),
+                input: document.querySelector('.buyin-input')?.value
+            }));
+            ok(
+                'buy-in editor offers type and plus/minus one stack',
+                buyInEdit.plus && buyInEdit.minus && buyInEdit.input === '200',
+                JSON.stringify(buyInEdit)
+            );
+            await tap(page, '.buyin-step-plus');
+            await page.waitForFunction(() => document.querySelector('.buyin-input')?.value === '400');
+            const afterPlus = await page.$eval('.buyin-input', (el) => el.value);
+            ok('plus adds one stack to buy-in', afterPlus === '400', afterPlus);
+            await tap(page, '.buyin-step-minus');
+            await page.waitForFunction(() => document.querySelector('.buyin-input')?.value === '200');
+            await page.focus('.buyin-input');
+            await page.keyboard.press('Enter');
+            await page.waitForFunction(() => document.querySelector('.buyin-amount')?.textContent === '$200.00');
+            ok('minus subtracts one stack from buy-in', true);
+            await shot(page, 'buyin-plus-minus.png');
+
+            await page.evaluate(() => {
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                el.value = '500';
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            await page.waitForFunction(() => {
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                return el && (el.value === '500' || el.value === '500.00');
+            });
+            await page.evaluate(() => {
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                el.value = '600';
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            await page.waitForFunction(() => {
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                return el && (el.value === '600' || el.value === '600.00');
+            });
+            const undoAfterCash = await page.$eval('#undoBtn', (el) => !el.disabled);
+            ok('undo enabled after mistyped cash-out', undoAfterCash);
+            await tap(page, '#undoBtn');
+            await page.waitForFunction(() => {
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                return el && (el.value === '500' || el.value === '500.00');
+            });
+            const cashAfterUndo = await page.$eval('tr:not(.house-row) .cashout-input', (el) => el.value);
+            ok('undo restores previous cash-out', cashAfterUndo === '500' || cashAfterUndo === '500.00', cashAfterUndo);
+            await tap(page, '#undoBtn');
+            await page.waitForFunction(() => {
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                return el && (el.value === '0' || el.value === '0.00');
+            });
 
             await tap(page, '.buyin-amount');
             await page.waitForSelector('.buyin-input');
@@ -1304,16 +1363,12 @@ async function run() {
                 el.dispatchEvent(new Event('change', { bubbles: true }));
             });
             await page.waitForFunction(() => {
-                const section = document.getElementById('settlementSection');
-                return section && !section.hidden;
+                const el = document.querySelector('tr:not(.house-row) .cashout-input');
+                return el && (el.value === '170' || el.value === '170.00');
             });
-            const settlement = await page.evaluate(() => {
-                const section = document.getElementById('settlementSection');
-                const items = Array.from(document.querySelectorAll('#settlementList li')).map((el) => el.textContent.trim());
-                return { hidden: section.hidden, items };
-            });
-            ok('settlement helper lists transfers', settlement.hidden === false && settlement.items.length > 0, JSON.stringify(settlement));
-            await shot(page, 'settlement-helper.png');
+            const noSettlement = await page.evaluate(() => !document.getElementById('settlementSection'));
+            ok('cash-out does not open a settlement box', noSettlement);
+            await shot(page, 'pnl-after-cashout.png');
 
             const paidCol = await page.evaluate(() => {
                 const th = document.querySelector('#playerTable thead th.settle-col');
@@ -1338,8 +1393,8 @@ async function run() {
             await page.waitForFunction(() => document.getElementById('copyResultsBtn')?.textContent === 'Copied');
             const copied = await page.evaluate(() => navigator.clipboard.readText());
             ok(
-                'copy results includes names, settlement, and notes',
-                /Alice/.test(copied) && /Settlement/i.test(copied) && /Dealer/.test(copied) && /Straddle on seat 3/.test(copied),
+                'copy results includes names and notes without settlement',
+                /Alice/.test(copied) && /Dealer/.test(copied) && /Straddle on seat 3/.test(copied) && !/Settlement/i.test(copied),
                 copied.slice(0, 500)
             );
 
