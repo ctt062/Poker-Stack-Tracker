@@ -11,6 +11,7 @@ let lastRoomStatus = null;
 const HOUSE_DEALER_ID = 'house-dealer';
 const HOUSE_HOST_ID = 'house-host';
 const RAKE_TYPES = ['none', 'time', 'pot', 'flat', 'custom'];
+const NOTES_MAX = 4000;
 
 // Game state
 let gameState = {
@@ -38,7 +39,8 @@ let gameState = {
         running: false,
         startedAt: null,
         elapsedMs: 0
-    }
+    },
+    notes: ''
 };
 
 let undoStack = [];
@@ -451,6 +453,7 @@ clearStatsBtn.addEventListener('click', () => {
         gameState.house.forEach((row) => { row.cashOut = 0; row.settled = false; });
         pauseClock(true);
         gameState.clock = defaultClock();
+        gameState.notes = '';
         undoStack = [];
         saveGameState();
         updateDisplay();
@@ -465,6 +468,8 @@ const copyResultsBtn = document.getElementById('copyResultsBtn');
 if (copyResultsBtn) {
     copyResultsBtn.addEventListener('click', () => copyResultsToClipboard(copyResultsBtn));
 }
+initNotesField();
+
 const copySettlementBtn = document.getElementById('copySettlementBtn');
 if (copySettlementBtn) {
     copySettlementBtn.addEventListener('click', () => copyResultsToClipboard(copySettlementBtn));
@@ -744,10 +749,66 @@ function normalizeClock(raw) {
     };
 }
 
+function normalizeNotes(value) {
+    return String(value == null ? '' : value).slice(0, NOTES_MAX);
+}
+
+function notesField() {
+    return document.getElementById('sessionNotes');
+}
+
+let notesSaveTimer = null;
+
+function syncNotesField() {
+    const el = notesField();
+    if (!el) return;
+    const next = normalizeNotes(gameState.notes);
+    gameState.notes = next;
+    el.readOnly = !canEditGame();
+    if (document.activeElement === el) return;
+    if (el.value !== next) el.value = next;
+}
+
+function commitNotesFromField(persistNow) {
+    const el = notesField();
+    if (!el) return;
+    if (!canEditGame()) {
+        el.value = normalizeNotes(gameState.notes);
+        return;
+    }
+    const next = normalizeNotes(el.value);
+    if (el.value !== next) el.value = next;
+    const changed = gameState.notes !== next;
+    gameState.notes = next;
+    if (!changed && !persistNow) return;
+    if (persistNow) {
+        if (notesSaveTimer) {
+            clearTimeout(notesSaveTimer);
+            notesSaveTimer = null;
+        }
+        saveGameState();
+        return;
+    }
+    if (notesSaveTimer) clearTimeout(notesSaveTimer);
+    notesSaveTimer = setTimeout(() => {
+        notesSaveTimer = null;
+        saveGameState();
+    }, 300);
+}
+
+function initNotesField() {
+    const el = notesField();
+    if (!el) return;
+    el.maxLength = NOTES_MAX;
+    el.addEventListener('input', () => commitNotesFromField(false));
+    el.addEventListener('blur', () => commitNotesFromField(true));
+}
+
 function ensureHouseState() {
     gameState.rake = normalizeRake(gameState.rake);
     gameState.house = normalizeHouse(gameState.house);
     gameState.clock = normalizeClock(gameState.clock);
+    gameState.notes = normalizeNotes(gameState.notes);
     seatedPlayers().forEach((p) => {
         p.settled = p.settled === true;
         p.cashOut = Math.max(0, money(p.cashOut));
@@ -1375,6 +1436,12 @@ function formatResultsForWhatsApp() {
     lines.push(`Cash-outs ${formatMoney(totals.cashOut)}`);
     const leftoverLabel = totals.balance > 0.005 ? 'Over' : totals.balance < -0.005 ? 'Unaccounted' : 'Balance';
     lines.push(`${leftoverLabel} ${formatMoney(totals.balance, true)}`);
+    const notes = normalizeNotes(gameState.notes).trim();
+    if (notes) {
+        lines.push('');
+        lines.push('*Notes*');
+        lines.push(notes);
+    }
     const transfers = calculateSettlement();
     if (transfers.length) {
         lines.push('');
@@ -1533,6 +1600,7 @@ function updateDisplay() {
     updateRakeHint();
     renderChopLeftoverButton(totals);
     renderSettlement();
+    syncNotesField();
     updateUndoBtn();
     applyEditabilityUI();
 }
@@ -1745,6 +1813,8 @@ function applyEditabilityUI() {
     updateUndoBtn();
     const chopBtn = document.getElementById('chopLeftoverBtn');
     if (chopBtn) chopBtn.disabled = !editable;
+    const notesEl = notesField();
+    if (notesEl) notesEl.readOnly = !editable;
     document.body.classList.toggle('room-view-only', !editable && !!(window.RoomSync && RoomSync.isInRoom()));
 }
 
@@ -1796,6 +1866,7 @@ function normalizeRemoteGame(remoteGame) {
     if (remoteGame.rake !== undefined) normalized.rake = normalizeRake(remoteGame.rake);
     if (remoteGame.house !== undefined) normalized.house = normalizeHouse(remoteGame.house);
     if (remoteGame.clock !== undefined) normalized.clock = normalizeClock(remoteGame.clock);
+    normalized.notes = normalizeNotes(remoteGame.notes);
 
     return normalized;
 }
@@ -1809,7 +1880,8 @@ function sharedStateKey(source) {
         bankerName: source.bankerName,
         rake: source.rake,
         house: source.house,
-        clock: source.clock
+        clock: source.clock,
+        notes: source.notes || ''
     });
 }
 
@@ -1844,7 +1916,8 @@ function applyRemoteGame(remoteGame) {
         bankerName: remote.bankerName || gameState.bankerName,
         rake: remote.rake || defaultRake(),
         house: remote.house || defaultHouse(),
-        clock: remote.clock || defaultClock()
+        clock: remote.clock || defaultClock(),
+        notes: remote.notes !== undefined ? remote.notes : (gameState.notes || '')
     };
 
     // Joining a room replaces local data: keep a restorable copy of the solo
@@ -1947,6 +2020,10 @@ function exportToExcel() {
     csvContent += `Dealer + Host,${totals.houseCashOut.toFixed(2)},,,\n`;
     csvContent += `Total Cash Out,${totals.cashOut.toFixed(2)},,,\n`;
     csvContent += `Total Balance,${totals.balance.toFixed(2)},,,\n`;
+    const notes = normalizeNotes(gameState.notes).trim();
+    if (notes) {
+        csvContent += `Notes,${csvCell(notes)},,,\n`;
+    }
 
     const transfers = calculateSettlement();
     if (transfers.length) {
@@ -2484,7 +2561,8 @@ function blankRoomGame(rake) {
         bankerName: 'Banker',
         rake: rake || defaultRake(),
         house: defaultHouse(),
-        clock: defaultClock()
+        clock: defaultClock(),
+        notes: ''
     };
 }
 

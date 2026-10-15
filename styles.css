@@ -713,6 +713,50 @@ tbody td {
     font-size: inherit; /* match .balance-section h3 (28px / compact 13px) */
 }
 
+.notes-section {
+    text-align: left;
+    padding: 20px;
+    background-color: var(--bg-primary);
+    border-radius: 8px;
+    margin-bottom: 24px;
+    border: 1px solid var(--border-color);
+    transition: background-color 0.2s ease;
+}
+
+.notes-section h3 {
+    font-weight: 500;
+    font-size: 16px;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.notes-input {
+    display: block;
+    width: 100%;
+    min-height: 96px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.45;
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notes-input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+}
+
+.notes-input:read-only {
+    cursor: default;
+    opacity: 0.9;
+}
+
 .action-buttons {
     text-align: center;
     display: flex;
@@ -1389,6 +1433,10 @@ body.room-view-only .banker-name,
 body.room-view-only .blind-display {
     cursor: default;
     opacity: 0.9;
+}
+
+body.room-view-only .notes-input {
+    cursor: default;
 }
 
 body.room-view-only .session-clock {

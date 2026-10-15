@@ -926,7 +926,75 @@ async function run() {
             ok('default rake is no rake', solo.rake === 'No rake', solo.rake);
             ok('stack control column is gone', !solo.headers.some((h) => /stack control/i.test(h)) && solo.stackBtns === 0 && solo.headers.length === 5, JSON.stringify(solo.headers));
             ok('house rows keep tip/pay notes on the name', solo.notes.includes('tip only') && solo.notes.includes('pay only'), JSON.stringify(solo.notes));
+            const notesBox = await page.evaluate(() => {
+                const balance = document.querySelector('.balance-section');
+                const notes = document.querySelector('.notes-section');
+                const settlement = document.getElementById('settlementSection');
+                const field = document.getElementById('sessionNotes');
+                const heading = notes ? (notes.querySelector('h3') || {}).textContent : '';
+                return {
+                    afterBalance: !!(balance && notes && balance.nextElementSibling === notes),
+                    beforeSettlement: !!(notes && settlement && notes.nextElementSibling === settlement),
+                    heading,
+                    tag: field ? field.tagName : '',
+                    readOnly: field ? field.readOnly : null,
+                    value: field ? field.value : null
+                };
+            });
+            ok(
+                'notes box sits after total cash balance',
+                notesBox.afterBalance && notesBox.beforeSettlement && notesBox.heading === 'Notes' && notesBox.tag === 'TEXTAREA' && notesBox.readOnly === false && notesBox.value === '',
+                JSON.stringify(notesBox)
+            );
+            await page.focus('#sessionNotes');
+            await page.$eval('#sessionNotes', (el) => {
+                el.value = 'Straddle on seat 3';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            await page.$eval('#sessionNotes', (el) => el.blur());
+            await page.waitForFunction(() => {
+                try {
+                    return JSON.parse(localStorage.getItem('pokerStackTracker') || '{}').notes === 'Straddle on seat 3';
+                } catch (e) {
+                    return false;
+                }
+            });
+            await tap(page, '#roomsHomeBtn');
+            await enterSolo(page);
+            const notesBack = await page.$eval('#sessionNotes', (el) => el.value);
+            ok('session notes persist across home and solo', notesBack === 'Straddle on seat 3', notesBack);
+            const viewerNotes = await page.evaluate(() => {
+                const prevCanEdit = RoomSync.canEdit;
+                const prevInRoom = RoomSync.isInRoom;
+                RoomSync.isInRoom = () => true;
+                RoomSync.canEdit = () => false;
+                applyEditabilityUI();
+                const field = document.getElementById('sessionNotes');
+                const readOnly = field.readOnly;
+                field.value = 'should not stick';
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+                const afterAttempt = field.value;
+                const stored = JSON.parse(localStorage.getItem('pokerStackTracker') || '{}').notes;
+                RoomSync.isInRoom = prevInRoom;
+                RoomSync.canEdit = prevCanEdit;
+                applyEditabilityUI();
+                return {
+                    readOnly,
+                    afterAttempt,
+                    stored,
+                    restored: document.getElementById('sessionNotes').readOnly
+                };
+            });
+            ok(
+                'viewers cannot edit session notes',
+                viewerNotes.readOnly === true
+                    && viewerNotes.afterAttempt === 'Straddle on seat 3'
+                    && viewerNotes.stored === 'Straddle on seat 3'
+                    && viewerNotes.restored === false,
+                JSON.stringify(viewerNotes)
+            );
             await shot(page, 'solo-house-rows.png');
+            await shot(page, 'solo-session-notes.png');
 
             await addPlayer(page, 'Alice', 200);
             const before = await page.$eval('.buyin-amount', (el) => el.textContent);
@@ -1270,9 +1338,9 @@ async function run() {
             await page.waitForFunction(() => document.getElementById('copyResultsBtn')?.textContent === 'Copied');
             const copied = await page.evaluate(() => navigator.clipboard.readText());
             ok(
-                'copy results includes names and settlement',
-                /Alice/.test(copied) && /Settlement/i.test(copied) && /Dealer/.test(copied),
-                copied.slice(0, 400)
+                'copy results includes names, settlement, and notes',
+                /Alice/.test(copied) && /Settlement/i.test(copied) && /Dealer/.test(copied) && /Straddle on seat 3/.test(copied),
+                copied.slice(0, 500)
             );
 
             await addPlayer(page, 'Bob', 200);
