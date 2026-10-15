@@ -129,7 +129,7 @@
                 </div>
 
                 <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
-                <button type="button" id="undoBtn" class="btn btn-secondary" disabled title="Undo last buy-in change">Undo</button>
+                <button type="button" id="undoBtn" class="btn btn-secondary" disabled title="Undo last buy-in or cash-out change">Undo</button>
             </div>
         </div>
 
@@ -163,14 +163,6 @@
             <textarea id="sessionNotes" class="notes-input" rows="4" maxlength="4000" placeholder="Jot down session notes..." aria-labelledby="notesHeading"></textarea>
         </div>
 
-        <div id="settlementSection" class="settlement-section" hidden>
-            <div class="settlement-head">
-                <h3>Settlement</h3>
-                <button type="button" id="copySettlementBtn" class="btn btn-secondary btn-small" title="Copy results for WhatsApp">Copy</button>
-            </div>
-            <p class="settlement-hint">Who pays whom so the books close. House rows are creditors (they only receive). Tick Paid when the cash has changed hands.</p>
-            <ul id="settlementList" class="settlement-list"></ul>
-        </div>
 
         <div class="action-buttons">
             <button type="button" id="copyResultsBtn" class="btn btn-secondary" title="Copy results for WhatsApp">Copy</button>
