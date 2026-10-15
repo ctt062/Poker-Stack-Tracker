@@ -1,5 +1,7 @@
 const STORAGE_KEY = 'pokerStackTracker';
 const SOLO_BACKUP_KEY = 'pokerStackTracker_soloBackup';
+const UNDO_STORAGE_PREFIX = 'pokerStackTracker_undo:';
+const UNDO_LIMIT = 40;
 const KNOWN_ROLES = ['host', 'editor', 'viewer'];
 
 // Room session bookkeeping
@@ -458,7 +460,7 @@ clearStatsBtn.addEventListener('click', () => {
         pauseClock(true);
         gameState.clock = defaultClock();
         gameState.notes = '';
-        undoStack = [];
+        clearUndo();
         saveGameState();
         updateDisplay();
     }
@@ -1144,6 +1146,45 @@ function resetClock() {
     updateClockUI();
 }
 
+function currentUndoScope() {
+    if (window.RoomSync && typeof RoomSync.isInRoom === 'function' && RoomSync.isInRoom()) {
+        const snap = typeof RoomSync.getRoomSnapshot === 'function' ? RoomSync.getRoomSnapshot() : null;
+        const id = snap && snap.roomId;
+        if (id) return 'room:' + id;
+    }
+    return 'solo';
+}
+
+function undoStorageKey(scope) {
+    return UNDO_STORAGE_PREFIX + (scope || currentUndoScope());
+}
+
+function persistUndo(scope) {
+    try {
+        const key = undoStorageKey(scope);
+        if (!undoStack.length) localStorage.removeItem(key);
+        else localStorage.setItem(key, JSON.stringify(undoStack));
+    } catch (e) {
+        // Device quota; undo still works in memory for this page.
+    }
+}
+
+function loadUndoForScope(scope) {
+    undoStack = [];
+    try {
+        const raw = localStorage.getItem(undoStorageKey(scope));
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                undoStack = parsed.filter((item) => item && typeof item === 'object').slice(-UNDO_LIMIT);
+            }
+        }
+    } catch (e) {
+        undoStack = [];
+    }
+    updateUndoBtn();
+}
+
 function updateUndoBtn() {
     const btn = document.getElementById('undoBtn');
     if (!btn) return;
@@ -1153,6 +1194,7 @@ function updateUndoBtn() {
 
 function clearUndo() {
     undoStack = [];
+    persistUndo();
     updateUndoBtn();
 }
 
@@ -1203,7 +1245,8 @@ function applyMoneyState(snap) {
 
 function recordUndo() {
     undoStack.push(captureMoneyState());
-    if (undoStack.length > 40) undoStack.shift();
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    persistUndo();
     updateUndoBtn();
 }
 
@@ -1216,6 +1259,7 @@ function closeEditBuyInModal() {
 function undoLastStack() {
     if (!assertCanEdit()) return;
     const last = undoStack.pop();
+    persistUndo();
     if (!last) {
         updateUndoBtn();
         return;
@@ -1928,7 +1972,6 @@ function restoreSoloSnapshot() {
     loadGameState();
     applyTheme();
     applyFontSize();
-    clearUndo();
     updateDisplay();
     return true;
 }
@@ -1959,10 +2002,11 @@ function applyRemoteGame(remoteGame) {
     }
 
     Object.assign(gameState, next);
-    // Keep theme prefs local; persist shared fields locally for offline view
+    // Keep theme prefs local; persist shared fields locally for offline view.
+    // Undo stays on this device only - never in the room document - so a
+    // remote echo of our own write must not wipe the Undo button.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
     closeEditBuyInModal();
-    clearUndo();
     updateDisplay();
 }
 
@@ -1992,6 +2036,7 @@ function loadGameState() {
         }
     }
     ensureHouseState();
+    loadUndoForScope();
 }
 
 function applyTheme() {
@@ -2712,7 +2757,7 @@ async function openRoomFromList(roomId) {
     pendingSoloStash = true;
     try {
         await RoomSync.enterRoom(roomId);
-        clearUndo();
+        loadUndoForScope();
         updateRoomStatusBar(RoomSync.getRoomSnapshot());
         showTracker();
     } catch (e) {
@@ -2746,6 +2791,7 @@ function restoreJoinedRoom() {
         }
         if (snap) {
             updateRoomStatusBar(snap);
+            loadUndoForScope();
             applyEditabilityUI();
             showTracker();
             return;
@@ -3099,6 +3145,7 @@ function initRoomUI() {
             try {
                 applyRoomRakeFromForm();
                 await RoomSync.createRoom(name, gameState);
+                persistUndo();
                 setRoomError('');
                 syncRoomModalPanels(RoomSync.getRoomSnapshot());
                 updateRoomStatusBar(RoomSync.getRoomSnapshot());
@@ -3135,7 +3182,7 @@ function initRoomUI() {
             pendingSoloStash = true;
             try {
                 await RoomSync.joinRoom(code, name);
-                clearUndo();
+                loadUndoForScope();
                 syncRoomModalPanels(RoomSync.getRoomSnapshot());
                 updateRoomStatusBar(RoomSync.getRoomSnapshot());
             } catch (e) {
@@ -3177,6 +3224,7 @@ function initRoomUI() {
             try {
                 const blank = blankRoomGame(readRakeFields('home', document.getElementById('homeRakeGroup')));
                 await RoomSync.createRoom(name, blank);
+                loadUndoForScope();
                 showTracker();
             } catch (e) {
                 pendingSoloStash = false;
@@ -3210,7 +3258,7 @@ function initRoomUI() {
             pendingSoloStash = true;
             try {
                 await RoomSync.joinRoom(code, name);
-                clearUndo();
+                loadUndoForScope();
                 updateRoomStatusBar(RoomSync.getRoomSnapshot());
                 showTracker();
             } catch (e) {
@@ -3318,13 +3366,13 @@ function initRoomUI() {
 
         if (!snap) {
             pendingSoloStash = false;
-            clearUndo();
             // After a room ends, keep the final shared numbers as the new solo
             // session. Only restore the pre-join solo backup when leaving an
-            // active room mid-session.
+            // active room mid-session. Undo stays on this device either way.
             if (lastRoomStatus === 'ended') {
                 localStorage.removeItem(SOLO_BACKUP_KEY);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+                persistUndo('solo');
                 showTracker();
             } else {
                 restoreSoloSnapshot();
