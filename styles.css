@@ -778,6 +778,13 @@ tbody td {
 #undoBtn {
     flex-shrink: 0;
     min-height: 40px;
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+#undoBtn:disabled {
+    pointer-events: none;
 }
 
 .footer {

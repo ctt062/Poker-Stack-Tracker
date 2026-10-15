@@ -1114,6 +1114,49 @@ async function run() {
                     && tapTargets.copy.bg !== 'rgba(0, 0, 0, 0)',
                 JSON.stringify(tapTargets.copy)
             );
+            const storedUndo = await page.evaluate(() => {
+                let n = 0;
+                try {
+                    n = JSON.parse(localStorage.getItem('pokerStackTracker_undo:solo') || '[]').length;
+                } catch (e) {
+                    n = -1;
+                }
+                const game = JSON.parse(localStorage.getItem('pokerStackTracker') || '{}');
+                return {
+                    n,
+                    gameHasUndo: Object.prototype.hasOwnProperty.call(game, 'undoStack')
+                        || Object.prototype.hasOwnProperty.call(game, 'undo')
+                };
+            });
+            ok(
+                'undo history is stored on this device, not in game state',
+                storedUndo.n > 0 && storedUndo.gameHasUndo === false,
+                JSON.stringify(storedUndo)
+            );
+            const undoAfterEcho = await page.evaluate(() => {
+                const prevIn = RoomSync.isInRoom;
+                const prevEdit = RoomSync.canEdit;
+                const prevSnap = RoomSync.getRoomSnapshot;
+                const prevPush = RoomSync.pushGameState;
+                RoomSync.isInRoom = () => true;
+                RoomSync.canEdit = () => true;
+                RoomSync.getRoomSnapshot = () => ({ roomId: 'echo-room' });
+                RoomSync.pushGameState = async () => {};
+                applyRemoteGame(JSON.parse(localStorage.getItem('pokerStackTracker') || '{}'));
+                const enabled = !document.getElementById('undoBtn').disabled;
+                const buyIn = document.querySelector('.buyin-amount')?.textContent;
+                RoomSync.isInRoom = prevIn;
+                RoomSync.canEdit = prevEdit;
+                RoomSync.getRoomSnapshot = prevSnap;
+                RoomSync.pushGameState = prevPush;
+                applyEditabilityUI();
+                return { enabled, buyIn };
+            });
+            ok(
+                'room snapshot echo does not disable undo',
+                undoAfterEcho.enabled === true && undoAfterEcho.buyIn === '$350.50',
+                JSON.stringify(undoAfterEcho)
+            );
             await tap(page, '#undoBtn');
             await page.waitForFunction(() => {
                 const el = document.querySelector('.buyin-amount');
