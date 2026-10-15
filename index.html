@@ -129,7 +129,7 @@
                 </div>
 
                 <button id="addPlayerBtn" class="btn btn-primary">+ Add Player</button>
-                <button type="button" id="undoBtn" class="btn btn-secondary" disabled title="Undo last buy-in or cash-out change">Undo</button>
+                <button type="button" id="undoBtn" class="btn btn-secondary" disabled title="Undo last change">Undo</button>
             </div>
         </div>
 
@@ -240,6 +240,28 @@
                 <div class="form-buttons">
                     <button type="submit" class="btn btn-primary">Save</button>
                     <button type="button" id="deletePlayerBtn" class="btn btn-danger">Delete Player</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Buy-in Modal -->
+    <div id="editBuyInModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Edit Buy-in</h2>
+            <form id="editBuyInForm" novalidate>
+                <div class="form-group">
+                    <label for="editBuyInAmount">Total Buy-in: $</label>
+                    <div class="buyin-edit">
+                        <button type="button" id="editBuyInMinus" class="buyin-step buyin-step-minus" aria-label="Minus one stack" title="Minus one stack">-</button>
+                        <input type="number" id="editBuyInAmount" class="buyin-input" required min="0" step="0.01" inputmode="decimal">
+                        <button type="button" id="editBuyInPlus" class="buyin-step buyin-step-plus" aria-label="Plus one stack" title="Plus one stack">+</button>
+                    </div>
+                    <p id="editBuyInHint" class="room-field-hint">Plus or minus one stack</p>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="btn btn-primary">Save</button>
                 </div>
             </form>
         </div>

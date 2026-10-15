@@ -47,8 +47,6 @@ let undoStack = [];
 let clockTimer = null;
 let editingHouseId = null;
 let editingBuyInId = null;
-let buyInEditorFocus = false;
-let ignoreBuyInBlur = false;
 let roomUiReady = false;
 let appUnlocked = false;
 let verifyPollId = null;
@@ -70,9 +68,12 @@ const totalPlayersDisplay = document.getElementById('totalPlayers');
 const blindModal = document.getElementById('blindModal');
 const playerModal = document.getElementById('playerModal');
 const editNameModal = document.getElementById('editNameModal');
+const editBuyInModal = document.getElementById('editBuyInModal');
 const blindForm = document.getElementById('blindForm');
 const playerForm = document.getElementById('playerForm');
 const editNameForm = document.getElementById('editNameForm');
+const editBuyInForm = document.getElementById('editBuyInForm');
+const editBuyInAmount = document.getElementById('editBuyInAmount');
 const editSessionModal = document.getElementById('editSessionModal');
 const editSessionForm = document.getElementById('editSessionForm');
 
@@ -521,10 +522,48 @@ editNameForm.addEventListener('submit', (e) => {
     }
 });
 
+if (editBuyInForm) {
+    editBuyInForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!assertCanEdit()) return;
+        const playerId = editingBuyInId;
+        const amount = parseFloat(editBuyInAmount.value);
+        closeEditBuyInModal();
+        if (playerId != null) updateBuyIn(playerId, amount);
+    });
+}
+
+const editBuyInMinus = document.getElementById('editBuyInMinus');
+const editBuyInPlus = document.getElementById('editBuyInPlus');
+if (editBuyInMinus) {
+    editBuyInMinus.addEventListener('mousedown', (e) => e.preventDefault());
+    editBuyInMinus.addEventListener('click', () => stepBuyInInput(-1));
+}
+if (editBuyInPlus) {
+    editBuyInPlus.addEventListener('mousedown', (e) => e.preventDefault());
+    editBuyInPlus.addEventListener('click', () => stepBuyInInput(1));
+}
+if (editBuyInAmount) {
+    editBuyInAmount.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeEditBuyInModal();
+        }
+    });
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (editBuyInModal && editBuyInModal.style.display === 'block') {
+        e.preventDefault();
+        closeEditBuyInModal();
+    }
+});
+
 deletePlayerBtn.addEventListener('click', () => {
     if (!assertCanEdit()) return;
     if (editingHouseId) return;
-    if (editingPlayerId && confirm('Are you sure you want to delete this player? This cannot be undone.')) {
+    if (editingPlayerId && confirm('Are you sure you want to delete this player?')) {
         deletePlayer(editingPlayerId);
         closeEditNameModal();
     }
@@ -587,15 +626,31 @@ setTimeout(() => {
 
 closeButtons.forEach(btn => {
     btn.addEventListener('click', function() {
-        this.closest('.modal').style.display = 'none';
+        const modal = this.closest('.modal');
+        if (modal === editBuyInModal) {
+            closeEditBuyInModal();
+            return;
+        }
+        if (modal === editNameModal) {
+            closeEditNameModal();
+            return;
+        }
+        modal.style.display = 'none';
     });
 });
 
 // Close modal when clicking outside
 window.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal')) {
-        e.target.style.display = 'none';
+    if (!e.target.classList.contains('modal')) return;
+    if (e.target === editBuyInModal) {
+        closeEditBuyInModal();
+        return;
     }
+    if (e.target === editNameModal) {
+        closeEditNameModal();
+        return;
+    }
+    e.target.style.display = 'none';
 });
 
 const rakeForm = document.getElementById('rakeForm');
@@ -1105,28 +1160,44 @@ function captureMoneyState() {
     return {
         players: seatedPlayers().map((p) => ({
             id: p.id,
+            name: p.name,
             totalBuyIn: p.totalBuyIn,
-            cashOut: p.cashOut
+            cashOut: p.cashOut,
+            settled: !!p.settled
         })),
         house: (gameState.house || []).map((h) => ({
             id: h.id,
-            cashOut: h.cashOut
+            cashOut: h.cashOut,
+            settled: !!h.settled
         }))
     };
 }
 
 function applyMoneyState(snap) {
     if (!snap) return;
-    (snap.players || []).forEach((s) => {
-        const player = gameState.players.find((p) => p.id === s.id);
-        if (!player) return;
-        player.totalBuyIn = s.totalBuyIn;
-        player.cashOut = s.cashOut;
+    const byId = new Map(seatedPlayers().map((p) => [p.id, p]));
+    gameState.players = (snap.players || []).map((s) => {
+        const existing = byId.get(s.id);
+        if (existing) {
+            if (s.name != null) existing.name = s.name;
+            existing.totalBuyIn = s.totalBuyIn;
+            existing.cashOut = s.cashOut;
+            if (s.settled !== undefined) existing.settled = !!s.settled;
+            return existing;
+        }
+        return {
+            id: s.id,
+            name: s.name || 'Player',
+            totalBuyIn: s.totalBuyIn,
+            cashOut: s.cashOut,
+            settled: !!s.settled
+        };
     });
     (snap.house || []).forEach((s) => {
         const row = (gameState.house || []).find((h) => h.id === s.id);
         if (!row) return;
         row.cashOut = s.cashOut;
+        if (s.settled !== undefined) row.settled = !!s.settled;
     });
 }
 
@@ -1136,9 +1207,10 @@ function recordUndo() {
     updateUndoBtn();
 }
 
-function closeBuyInEditor() {
+function closeEditBuyInModal() {
     editingBuyInId = null;
-    buyInEditorFocus = false;
+    if (editBuyInModal) editBuyInModal.style.display = 'none';
+    if (editBuyInForm) editBuyInForm.reset();
 }
 
 function undoLastStack() {
@@ -1148,7 +1220,7 @@ function undoLastStack() {
         updateUndoBtn();
         return;
     }
-    closeBuyInEditor();
+    closeEditBuyInModal();
     applyMoneyState(last);
     saveGameState();
     updateDisplay();
@@ -1203,6 +1275,7 @@ function roomRoleLabel(role) {
 
 function addPlayer(name, buyIn) {
     if (!assertCanEdit()) return;
+    recordUndo();
     const player = {
         id: Date.now(),
         name: name,
@@ -1249,103 +1322,30 @@ function updateBuyIn(playerId, amount) {
 function beginEditBuyIn(playerId) {
     if (!assertCanEdit()) return;
     const player = gameState.players.find(p => p.id === playerId);
-    if (!player) return;
+    if (!player || !editBuyInModal || !editBuyInAmount) return;
     editingBuyInId = playerId;
-    buyInEditorFocus = true;
-    updateDisplay();
+    const title = editBuyInModal.querySelector('h2');
+    if (title) title.textContent = 'Edit Buy-in';
+    const hint = document.getElementById('editBuyInHint');
+    if (hint) {
+        hint.textContent = `${player.name} · plus or minus one stack (${formatMoney(gameState.stackAmount)})`;
+    }
+    editBuyInAmount.value = String(player.totalBuyIn);
+    editBuyInModal.style.display = 'block';
+    queueMicrotask(() => {
+        editBuyInAmount.focus();
+        editBuyInAmount.select();
+    });
 }
 
-function stepBuyIn(playerId, dir) {
+function stepBuyInInput(dir) {
     if (!assertCanEdit()) return;
-    const player = gameState.players.find(p => p.id === playerId);
-    if (!player) return;
-    const input = document.querySelector('.buyin-input');
-    let base = player.totalBuyIn;
-    if (input) {
-        const typed = parseFloat(input.value);
-        if (Number.isFinite(typed)) base = typed;
-    }
+    if (!editBuyInAmount) return;
+    const typed = parseFloat(editBuyInAmount.value);
+    const base = Number.isFinite(typed) ? typed : 0;
     const stack = Math.max(0, money(gameState.stackAmount));
-    ignoreBuyInBlur = true;
-    buyInEditorFocus = false;
-    editingBuyInId = playerId;
-    try {
-        updateBuyIn(playerId, Math.max(0, money(base + dir * stack)));
-    } finally {
-        ignoreBuyInBlur = false;
-    }
-}
-
-function renderBuyInEditor(player, cell) {
-    const wrap = document.createElement('div');
-    wrap.className = 'buyin-edit';
-
-    const minus = document.createElement('button');
-    minus.type = 'button';
-    minus.className = 'buyin-step buyin-step-minus';
-    minus.textContent = '-';
-    minus.setAttribute('aria-label', 'Minus one stack');
-    minus.title = 'Minus one stack';
-    minus.addEventListener('mousedown', (e) => e.preventDefault());
-    minus.addEventListener('click', () => stepBuyIn(player.id, -1));
-
-    const plus = document.createElement('button');
-    plus.type = 'button';
-    plus.className = 'buyin-step buyin-step-plus';
-    plus.textContent = '+';
-    plus.setAttribute('aria-label', 'Plus one stack');
-    plus.title = 'Plus one stack';
-    plus.addEventListener('mousedown', (e) => e.preventDefault());
-    plus.addEventListener('click', () => stepBuyIn(player.id, 1));
-
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.className = 'cashout-input buyin-input';
-    input.min = '0';
-    input.step = '0.01';
-    input.value = String(player.totalBuyIn);
-    input.setAttribute('aria-label', 'Total buy-in');
-
-    let finished = false;
-    const commitAndClose = () => {
-        if (finished) return;
-        finished = true;
-        const raw = input.value;
-        closeBuyInEditor();
-        updateBuyIn(player.id, parseFloat(raw));
-    };
-    const cancel = () => {
-        if (finished) return;
-        finished = true;
-        closeBuyInEditor();
-        updateDisplay();
-    };
-    input.addEventListener('blur', (e) => {
-        if (ignoreBuyInBlur) return;
-        if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
-        commitAndClose();
-    });
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            commitAndClose();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            cancel();
-        }
-    });
-
-    wrap.appendChild(minus);
-    wrap.appendChild(input);
-    wrap.appendChild(plus);
-    cell.appendChild(wrap);
-    if (buyInEditorFocus) {
-        buyInEditorFocus = false;
-        queueMicrotask(() => {
-            input.focus();
-            input.select();
-        });
-    }
+    editBuyInAmount.value = String(Math.max(0, money(base + dir * stack)));
+    editBuyInAmount.focus();
 }
 
 function editPlayerName(playerId) {
@@ -1374,6 +1374,7 @@ function updatePlayerName(playerId, newName) {
 
 function deletePlayer(playerId) {
     if (!assertCanEdit()) return;
+    recordUndo();
     gameState.players = gameState.players.filter(p => p.id !== playerId);
     saveGameState();
     updateDisplay();
@@ -1566,6 +1567,7 @@ function togglePlayerSettled(playerId) {
     if (!assertCanEdit()) return;
     const player = seatedPlayers().find((p) => p.id === playerId);
     if (!player) return;
+    recordUndo();
     player.settled = !player.settled;
     saveGameState();
     updateDisplay();
@@ -1576,6 +1578,7 @@ function toggleHouseSettled(houseId) {
     ensureHouseState();
     const row = gameState.house.find((h) => h.id === houseId);
     if (!row) return;
+    recordUndo();
     row.settled = !row.settled;
     saveGameState();
     updateDisplay();
@@ -1718,9 +1721,7 @@ function buildPlayerRow(player, editable) {
     nameCell.appendChild(nameSpan);
 
     const buyInCell = document.createElement('td');
-    if (editable && player.id === editingBuyInId) {
-        renderBuyInEditor(player, buyInCell);
-    } else if (editable) {
+    if (editable) {
         const buyInBtn = document.createElement('button');
         buyInBtn.type = 'button';
         buyInBtn.className = 'buyin-amount';
@@ -1960,7 +1961,7 @@ function applyRemoteGame(remoteGame) {
     Object.assign(gameState, next);
     // Keep theme prefs local; persist shared fields locally for offline view
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
-    closeBuyInEditor();
+    closeEditBuyInModal();
     clearUndo();
     updateDisplay();
 }
@@ -2599,7 +2600,7 @@ function showTracker() {
 }
 
 function showHome() {
-    closeBuyInEditor();
+    closeEditBuyInModal();
     stopVerifyPoll();
     document.documentElement.classList.remove('auth-pending');
     document.body.classList.remove('auth-pending');

@@ -454,12 +454,10 @@ body.compact-mode .buyin-amount {
     padding: 2px 4px;
 }
 
-body.compact-mode .buyin-input {
-    width: 65px;
-}
-
-body.compact-mode .buyin-edit .buyin-input {
-    width: 64px;
+body.compact-mode .buyin-step {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 18px;
 }
 
 body.compact-mode .balance-section {
@@ -1783,21 +1781,22 @@ body.compact-mode .house-badge {
 }
 
 .buyin-edit {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    max-width: 100%;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
 }
 
 .buyin-step {
-    flex: 0 0 auto;
-    min-width: 36px;
-    min-height: 36px;
+    flex: 0 0 48px;
+    width: 48px;
+    min-width: 48px;
+    min-height: 48px;
     padding: 0;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     color: #fff;
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 700;
     line-height: 1;
     cursor: pointer;
@@ -1820,7 +1819,6 @@ body.compact-mode .house-badge {
 }
 
 .buyin-input {
-    width: 90px;
     appearance: textfield;
     -moz-appearance: textfield;
 }
@@ -1832,51 +1830,16 @@ body.compact-mode .house-badge {
 }
 
 .buyin-edit .buyin-input {
-    width: 72px;
+    flex: 1 1 auto;
+    width: auto;
     min-width: 0;
-    flex: 1 1 56px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
 }
 
-body.compact-mode .buyin-step {
-    min-width: 32px;
-    min-height: 32px;
-    font-size: 16px;
-}
-
-@media (max-width: 640px) {
-    tr:has(.buyin-edit) td {
-        vertical-align: top;
-    }
-
-    .buyin-edit {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        width: 100%;
-        gap: 4px;
-    }
-
-    .buyin-edit .buyin-input {
-        grid-column: 1 / -1;
-        grid-row: 1;
-        width: 100%;
-        flex: none;
-    }
-
-    .buyin-step-minus {
-        grid-row: 2;
-        grid-column: 1;
-    }
-
-    .buyin-step-plus {
-        grid-row: 2;
-        grid-column: 2;
-    }
-
-    .buyin-step {
-        min-width: 36px;
-        min-height: 36px;
-        width: 100%;
-    }
+#editBuyInHint {
+    margin-top: 8px;
 }
 
 .account-chip {

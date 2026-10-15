@@ -172,6 +172,49 @@ async function addPlayer(page, name, buyIn) {
     });
 }
 
+async function openBuyInModal(page) {
+    await tap(page, '.buyin-amount');
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('editBuyInModal');
+        return modal && modal.style.display === 'block';
+    });
+}
+
+async function saveBuyInModal(page) {
+    await tap(page, '#editBuyInForm button[type="submit"]');
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('editBuyInModal');
+        return !modal || modal.style.display === 'none' || getComputedStyle(modal).display === 'none';
+    });
+}
+
+async function buyInModalLayout(page) {
+    return page.evaluate(() => {
+        const modal = document.getElementById('editBuyInModal');
+        const content = modal && modal.querySelector('.modal-content');
+        const plus = modal && modal.querySelector('.buyin-step-plus');
+        const minus = modal && modal.querySelector('.buyin-step-minus');
+        const input = modal && modal.querySelector('.buyin-input');
+        if (!modal || !content || !plus || !minus || !input) {
+            return { open: false };
+        }
+        const cr = content.getBoundingClientRect();
+        const inside = (el) => {
+            const r = el.getBoundingClientRect();
+            return r.left >= cr.left - 1 && r.right <= cr.right + 1
+                && r.top >= cr.top - 1 && r.bottom <= cr.bottom + 1;
+        };
+        return {
+            open: modal.style.display === 'block' && getComputedStyle(modal).display === 'block',
+            plusIn: inside(plus),
+            minusIn: inside(minus),
+            inputIn: inside(input),
+            input: input.value,
+            inline: !!document.querySelector('#playerTable .buyin-edit')
+        };
+    });
+}
+
 async function waitAuthGate(page) {
     await page.waitForFunction(() => {
         const gate = document.getElementById('authGate');
@@ -1003,14 +1046,24 @@ async function run() {
             ok('buy-in shows $200.00', before === '$200.00', before);
             const countAfterAdd = await page.$eval('#totalPlayers', (el) => el.textContent);
             ok('player count is 1 after add, house excluded', countAfterAdd === '1', countAfterAdd);
+            const undoAfterAdd = await page.$eval('#undoBtn', (el) => !el.disabled);
+            ok('undo enabled after adding a player', undoAfterAdd);
+            await tap(page, '#undoBtn');
+            await page.waitForFunction(() => document.getElementById('totalPlayers')?.textContent === '0');
+            ok('undo removes the added player', true);
+            await addPlayer(page, 'Alice', 200);
 
-            await tap(page, '.buyin-amount');
-            await page.waitForSelector('.buyin-input');
-            await page.$eval('.buyin-input', (el) => {
-                el.value = '350.5';
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-            await page.$eval('.buyin-input', (el) => el.blur());
+            await openBuyInModal(page);
+            const modalOpen = await buyInModalLayout(page);
+            ok(
+                'buy-in edits in a popup with type and plus/minus',
+                modalOpen.open && modalOpen.plusIn && modalOpen.minusIn && modalOpen.inputIn
+                    && modalOpen.input === '200' && modalOpen.inline === false,
+                JSON.stringify(modalOpen)
+            );
+            await shot(page, 'buyin-plus-minus.png');
+            await page.$eval('#editBuyInAmount', (el) => { el.value = '350.5'; });
+            await saveBuyInModal(page);
             await page.waitForFunction(() => {
                 const el = document.querySelector('.buyin-amount');
                 return el && el.textContent === '$350.50';
@@ -1068,29 +1121,27 @@ async function run() {
             });
             ok('undo restores typed buy-in', true);
 
-            await tap(page, '.buyin-amount');
-            await page.waitForSelector('.buyin-step-plus');
-            const buyInEdit = await page.evaluate(() => ({
-                plus: !!document.querySelector('.buyin-step-plus'),
-                minus: !!document.querySelector('.buyin-step-minus'),
-                input: document.querySelector('.buyin-input')?.value
-            }));
+            await openBuyInModal(page);
+            const buyInEdit = await buyInModalLayout(page);
             ok(
                 'buy-in editor offers type and plus/minus one stack',
-                buyInEdit.plus && buyInEdit.minus && buyInEdit.input === '200',
+                buyInEdit.open && buyInEdit.plusIn && buyInEdit.minusIn && buyInEdit.input === '200',
                 JSON.stringify(buyInEdit)
             );
             await tap(page, '.buyin-step-plus');
-            await page.waitForFunction(() => document.querySelector('.buyin-input')?.value === '400');
-            const afterPlus = await page.$eval('.buyin-input', (el) => el.value);
+            await page.waitForFunction(() => document.querySelector('#editBuyInAmount')?.value === '400');
+            const afterPlus = await page.$eval('#editBuyInAmount', (el) => el.value);
             ok('plus adds one stack to buy-in', afterPlus === '400', afterPlus);
             await tap(page, '.buyin-step-minus');
-            await page.waitForFunction(() => document.querySelector('.buyin-input')?.value === '200');
-            await page.focus('.buyin-input');
-            await page.keyboard.press('Enter');
+            await page.waitForFunction(() => document.querySelector('#editBuyInAmount')?.value === '200');
+            await tap(page, '.buyin-step-plus');
+            await page.waitForFunction(() => document.querySelector('#editBuyInAmount')?.value === '400');
+            await saveBuyInModal(page);
+            await page.waitForFunction(() => document.querySelector('.buyin-amount')?.textContent === '$400.00');
+            ok('saved plus-one-stack buy-in', true);
+            await tap(page, '#undoBtn');
             await page.waitForFunction(() => document.querySelector('.buyin-amount')?.textContent === '$200.00');
-            ok('minus subtracts one stack from buy-in', true);
-            await shot(page, 'buyin-plus-minus.png');
+            ok('undo restores buy-in after plus-one-stack save', true);
 
             await page.evaluate(() => {
                 const el = document.querySelector('tr:not(.house-row) .cashout-input');
@@ -1125,13 +1176,13 @@ async function run() {
                 return el && (el.value === '0' || el.value === '0.00');
             });
 
-            await tap(page, '.buyin-amount');
-            await page.waitForSelector('.buyin-input');
-            await page.$eval('.buyin-input', (el) => {
-                el.value = '-40';
+            await openBuyInModal(page);
+            await page.$eval('#editBuyInAmount', (el) => { el.value = '-40'; });
+            await saveBuyInModal(page);
+            await page.waitForFunction(() => {
+                const el = document.querySelector('.buyin-amount');
+                return el && el.textContent === '$0.00';
             });
-            await page.$eval('.buyin-input', (el) => el.blur());
-            await page.waitForSelector('.buyin-amount');
             const rejected = await page.$eval('.buyin-amount', (el) => el.textContent);
             ok('negative typed buy-in rejected to $0.00', rejected === '$0.00', rejected);
             await tap(page, '#undoBtn');
@@ -1140,12 +1191,14 @@ async function run() {
                 return el && el.textContent === '$200.00';
             });
 
-            await tap(page, '.buyin-amount');
-            await page.waitForSelector('.buyin-input');
-            await page.$eval('.buyin-input', (el) => { el.value = '999'; });
-            await page.focus('.buyin-input');
+            await openBuyInModal(page);
+            await page.$eval('#editBuyInAmount', (el) => { el.value = '999'; });
+            await page.focus('#editBuyInAmount');
             await page.keyboard.press('Escape');
-            await page.waitForSelector('.buyin-amount');
+            await page.waitForFunction(() => {
+                const modal = document.getElementById('editBuyInModal');
+                return !modal || modal.style.display === 'none' || getComputedStyle(modal).display === 'none';
+            });
             const escaped = await page.$eval('.buyin-amount', (el) => el.textContent);
             ok('escape cancels typed buy-in', escaped === '$200.00', escaped);
             await shot(page, 'typed-buyin.png');
@@ -1671,6 +1724,14 @@ async function run() {
             }));
             ok('mobile tracker shows house rows and typed buy-in control', mobile.house === 2 && mobile.buyIn === '$200.00', JSON.stringify(mobile));
             ok('mobile tracker has no stack control column', mobile.stackBtns === 0 && mobile.headers.length === 5 && !mobile.headers.some((h) => /stack/i.test(h)), JSON.stringify(mobile.headers));
+            await openBuyInModal(page);
+            const mobileModal = await buyInModalLayout(page);
+            ok(
+                'mobile buy-in popup contains type and plus/minus',
+                mobileModal.open && mobileModal.plusIn && mobileModal.minusIn && mobileModal.inputIn && mobileModal.inline === false,
+                JSON.stringify(mobileModal)
+            );
+            await shot(page, 'buyin-modal-mobile.png');
         });
     } finally {
         await browser.close();
