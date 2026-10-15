@@ -99,7 +99,8 @@
             bankerName: gameState.bankerName,
             rake: gameState.rake || null,
             house: gameState.house || null,
-            clock: gameState.clock || null
+            clock: gameState.clock || null,
+            notes: typeof gameState.notes === 'string' ? gameState.notes : ''
         }));
     }
 

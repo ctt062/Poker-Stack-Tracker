@@ -275,6 +275,26 @@ async function run() {
             delta > 6 * 24 * 60 * 60 * 1000 && delta < 8 * 24 * 60 * 60 * 1000,
             String(delta)
         );
+        ok(
+            'create room stores empty notes by default',
+            created.game && created.game.notes === '',
+            JSON.stringify(created.game)
+        );
+    }
+
+    {
+        const { RoomSync, rooms } = loadRoom();
+        const snap = await RoomSync.createRoom('River', {
+            players: [],
+            stackAmount: 200,
+            notes: 'Straddle on seat 3'
+        });
+        const created = rooms[snap.roomId];
+        ok(
+            'create room copies session notes',
+            !!(created && created.game && created.game.notes === 'Straddle on seat 3'),
+            JSON.stringify(created && created.game)
+        );
     }
 
     {
