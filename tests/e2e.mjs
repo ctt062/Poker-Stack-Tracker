@@ -1560,6 +1560,50 @@ async function run() {
             ok('room modal opens', roomState.display === 'block', roomState.display);
             ok('room modal shows display name', roomState.value === 'River', roomState.value);
             ok('room display name is not an input', roomState.tag !== 'INPUT', roomState.tag);
+
+            await page.evaluate(() => {
+                RoomSync.getRoomSnapshot = () => ({
+                    roomId: 'r-share',
+                    code: '0421',
+                    role: 'host',
+                    status: 'active',
+                    canEdit: true,
+                    isHost: true,
+                    displayName: 'River'
+                });
+                RoomSync.isInRoom = () => true;
+                window.openRoomModal();
+            });
+            await page.waitForSelector('#roomActivePanel', { visible: true });
+            const shareUi = await page.evaluate(() => {
+                const btn = document.getElementById('copyRoomCodeBtn');
+                const code = document.getElementById('activeRoomCode');
+                const panel = document.getElementById('roomActivePanel');
+                return {
+                    label: btn ? btn.textContent.trim() : '',
+                    code: code ? code.textContent : '',
+                    panelHidden: panel ? panel.hidden : null
+                };
+            });
+            ok(
+                'live room share button is Share',
+                shareUi.label === 'Share' && shareUi.code === '0421' && shareUi.panelHidden === false,
+                JSON.stringify(shareUi)
+            );
+            await shot(page, 'room-share-button.png');
+            await page.browserContext().overridePermissions(origin, ['clipboard-read', 'clipboard-write']);
+            await tap(page, '#copyRoomCodeBtn');
+            await page.waitForFunction(() => document.getElementById('copyRoomCodeBtn')?.textContent === 'Copied');
+            const shared = await page.evaluate(() => navigator.clipboard.readText());
+            ok(
+                'share copies site link and 4-digit room code',
+                /Room code: 0421/.test(shared)
+                    && /[?&]room=0421/.test(shared)
+                    && shared.includes(origin)
+                    && shared.includes('\n'),
+                shared
+            );
+
             const peopleHint = await page.$eval('#peopleModal .room-hint', (el) => el.textContent);
             ok('people modal labels Room host as a permission', /Room host is a permission, not the Host payee/i.test(peopleHint), peopleHint);
             await shot(page, 'solo-account-room-name.png');
