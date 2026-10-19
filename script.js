@@ -1556,6 +1556,47 @@ function formatResultsForWhatsApp() {
     return lines.join('\n');
 }
 
+function roomInviteUrl(code) {
+    const url = new URL(window.location.href);
+    url.hash = '';
+    let path = url.pathname || '/';
+    if (/\/index\.html$/i.test(path)) {
+        path = path.replace(/index\.html$/i, '');
+    }
+    if (!path.endsWith('/')) path += '/';
+    url.pathname = path;
+    url.search = '';
+    const cleaned = String(code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    url.searchParams.set('room', cleaned);
+    return url.toString();
+}
+
+function roomShareText(code) {
+    const cleaned = String(code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return `${roomInviteUrl(cleaned)}\nRoom code: ${cleaned}`;
+}
+
+async function copyTextToClipboard(text) {
+    let copied = copyTextToClipboardSync(text);
+    if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+        } catch (e) {
+            copied = false;
+        }
+    }
+    return copied;
+}
+
+function flashCopiedLabel(button, idleLabel) {
+    if (!button) return;
+    button.textContent = 'Copied';
+    setTimeout(() => {
+        if (button.textContent === 'Copied') button.textContent = idleLabel;
+    }, 1500);
+}
+
 function copyTextToClipboardSync(text) {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -1585,26 +1626,12 @@ async function copyResultsToClipboard(button) {
     const text = formatResultsForWhatsApp();
     // Sync copy first so iOS keeps the tap as a user gesture. Async clipboard
     // can reject and then the fallback would run too late to be allowed.
-    let copied = copyTextToClipboardSync(text);
-    if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
-        try {
-            await navigator.clipboard.writeText(text);
-            copied = true;
-        } catch (e) {
-            copied = false;
-        }
-    }
+    const copied = await copyTextToClipboard(text);
     if (!copied) {
         alert('Could not copy. Long-press and copy the text instead.');
         return;
     }
-    if (button) {
-        const prev = button.textContent;
-        button.textContent = 'Copied';
-        setTimeout(() => {
-            if (button.textContent === 'Copied') button.textContent = prev;
-        }, 1500);
-    }
+    flashCopiedLabel(button, 'Copy');
 }
 
 function togglePlayerSettled(playerId) {
@@ -3329,14 +3356,14 @@ function initRoomUI() {
     if (copyBtn) {
         copyBtn.addEventListener('click', async () => {
             const snap = RoomSync.getRoomSnapshot();
-            if (!snap) return;
-            try {
-                await navigator.clipboard.writeText(snap.code);
-                copyBtn.textContent = 'Copied';
-                setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-            } catch (e) {
-                prompt('Copy room code:', snap.code);
+            if (!snap || !snap.code) return;
+            const text = roomShareText(snap.code);
+            const copied = await copyTextToClipboard(text);
+            if (!copied) {
+                prompt('Share this room:', text);
+                return;
             }
+            flashCopiedLabel(copyBtn, 'Share');
         });
     }
 
