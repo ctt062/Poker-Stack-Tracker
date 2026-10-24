@@ -449,7 +449,8 @@ body.compact-mode .cashout-input {
     width: 65px;
 }
 
-body.compact-mode .buyin-amount {
+body.compact-mode .buyin-amount,
+body.compact-mode .cashout-amount {
     font-size: 11px;
     padding: 2px 4px;
 }
@@ -1768,7 +1769,8 @@ body.compact-mode .house-badge {
     min-height: 42px;
 }
 
-.buyin-amount {
+.buyin-amount,
+.cashout-amount {
     appearance: none;
     background: none;
     border: none;
@@ -1782,7 +1784,8 @@ body.compact-mode .house-badge {
     text-align: left;
 }
 
-.buyin-amount:hover {
+.buyin-amount:hover,
+.cashout-amount:hover {
     color: var(--accent-primary);
     background: rgba(16, 163, 127, 0.1);
 }
@@ -1845,8 +1848,15 @@ body.compact-mode .house-badge {
     font-weight: 600;
 }
 
-#editBuyInHint {
+#editBuyInHint,
+#editCashOutHint {
     margin-top: 8px;
+}
+
+#editCashOutAmount {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
 }
 
 .account-chip {
@@ -2091,6 +2101,25 @@ body.auth-pending #homeScreen {
     margin: 20px 0 10px;
 }
 
+#homePastSessions {
+    margin-top: 8px;
+}
+
+.session-history-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 0 0 16px;
+    max-height: 40vh;
+    overflow: auto;
+}
+
 .home-room-list {
     list-style: none;
     display: flex;
@@ -2170,6 +2199,13 @@ body.auth-pending #homeScreen {
 
 .action-clock-overlay[hidden] {
     display: none !important;
+}
+
+.action-clock-overlay.is-readonly .action-clock-presets,
+.action-clock-overlay.is-readonly .action-clock-custom,
+.action-clock-overlay.is-readonly .action-clock-actions {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 html.action-clock-open,
