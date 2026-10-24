@@ -1,4 +1,4 @@
-const CACHE_NAME = 'poker-tracker-v32';
+const CACHE_NAME = 'poker-tracker-v33';
 const BASE_PATH = '/Poker-Stack-Tracker';
 const urlsToCache = [
   `${BASE_PATH}/`,

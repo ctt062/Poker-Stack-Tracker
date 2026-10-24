@@ -100,7 +100,8 @@
             rake: gameState.rake || null,
             house: gameState.house || null,
             clock: gameState.clock || null,
-            notes: typeof gameState.notes === 'string' ? gameState.notes : ''
+            notes: typeof gameState.notes === 'string' ? gameState.notes : '',
+            actionClock: gameState.actionClock || null
         }));
     }
 

@@ -215,6 +215,51 @@ async function buyInModalLayout(page) {
     });
 }
 
+async function openCashOutModal(page, selector = 'tr:not(.house-row) .cashout-amount') {
+    await tap(page, selector);
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('editCashOutModal');
+        return modal && modal.style.display === 'block';
+    });
+}
+
+async function saveCashOutModal(page) {
+    await tap(page, '#editCashOutForm button[type="submit"]');
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('editCashOutModal');
+        return !modal || modal.style.display === 'none' || getComputedStyle(modal).display === 'none';
+    });
+}
+
+async function setCashOutAmount(page, amount, selector = 'tr:not(.house-row) .cashout-amount') {
+    await openCashOutModal(page, selector);
+    await page.$eval('#editCashOutAmount', (el, n) => { el.value = String(n); }, amount);
+    await saveCashOutModal(page);
+}
+
+async function setNthCashOutAmount(page, selector, index, amount) {
+    await page.evaluate((sel, i) => {
+        const el = document.querySelectorAll(sel)[i];
+        if (el) {
+            el.scrollIntoView({ block: 'center', inline: 'nearest' });
+            el.click();
+        }
+    }, selector, index);
+    await page.waitForFunction(() => {
+        const modal = document.getElementById('editCashOutModal');
+        return modal && modal.style.display === 'block';
+    });
+    await page.$eval('#editCashOutAmount', (el, n) => { el.value = String(n); }, amount);
+    await saveCashOutModal(page);
+}
+
+async function waitCashOutText(page, selector, text) {
+    await page.waitForFunction((sel, expected) => {
+        const el = document.querySelector(sel);
+        return el && el.textContent === expected;
+    }, {}, selector, text);
+}
+
 async function waitAuthGate(page) {
     await page.waitForFunction(() => {
         const gate = document.getElementById('authGate');
@@ -811,6 +856,8 @@ async function run() {
             ok('house rows present after solo from home', house.includes('Dealer') && house.includes('Host'), JSON.stringify(house));
             await shot(page, 'tracker-after-display-name.png');
 
+            const soloRoomBtn = await page.$eval('#roomBtn', (el) => el.textContent.trim());
+            ok('solo header button is Room', soloRoomBtn === 'Room', soloRoomBtn);
             await tap(page, '#roomBtn');
             await page.waitForSelector('#roomModal', { visible: true });
             const room = await page.evaluate(() => {
@@ -1186,38 +1233,46 @@ async function run() {
             await page.waitForFunction(() => document.querySelector('.buyin-amount')?.textContent === '$200.00');
             ok('undo restores buy-in after plus-one-stack save', true);
 
-            await page.evaluate(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                el.value = '500';
-                el.dispatchEvent(new Event('change', { bubbles: true }));
+            await openCashOutModal(page);
+            const cashOutEdit = await page.evaluate(() => {
+                const modal = document.getElementById('editCashOutModal');
+                return {
+                    open: !!(modal && modal.style.display === 'block' && getComputedStyle(modal).display === 'block'),
+                    plus: !!modal.querySelector('.buyin-step-plus, .buyin-step-minus, #editCashOutPlus, #editCashOutMinus'),
+                    input: (document.getElementById('editCashOutAmount') || {}).value || '',
+                    hint: (document.getElementById('editCashOutHint') || {}).textContent || ''
+                };
             });
-            await page.waitForFunction(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                return el && (el.value === '500' || el.value === '500.00');
-            });
-            await page.evaluate(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                el.value = '600';
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-            await page.waitForFunction(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                return el && (el.value === '600' || el.value === '600.00');
-            });
+            ok(
+                'cash-out editor offers type without plus/minus',
+                cashOutEdit.open && cashOutEdit.plus === false && cashOutEdit.input === '0',
+                JSON.stringify(cashOutEdit)
+            );
+            await shot(page, 'cashout-modal.png');
+            await page.$eval('#editCashOutAmount', (el) => { el.value = '500'; });
+            await saveCashOutModal(page);
+            await waitCashOutText(page, 'tr:not(.house-row) .cashout-amount', '$500.00');
+            await setCashOutAmount(page, '600');
+            await waitCashOutText(page, 'tr:not(.house-row) .cashout-amount', '$600.00');
             const undoAfterCash = await page.$eval('#undoBtn', (el) => !el.disabled);
             ok('undo enabled after mistyped cash-out', undoAfterCash);
             await tap(page, '#undoBtn');
-            await page.waitForFunction(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                return el && (el.value === '500' || el.value === '500.00');
-            });
-            const cashAfterUndo = await page.$eval('tr:not(.house-row) .cashout-input', (el) => el.value);
-            ok('undo restores previous cash-out', cashAfterUndo === '500' || cashAfterUndo === '500.00', cashAfterUndo);
+            await waitCashOutText(page, 'tr:not(.house-row) .cashout-amount', '$500.00');
+            const cashAfterUndo = await page.$eval('tr:not(.house-row) .cashout-amount', (el) => el.textContent);
+            ok('undo restores previous cash-out', cashAfterUndo === '$500.00', cashAfterUndo);
             await tap(page, '#undoBtn');
+            await waitCashOutText(page, 'tr:not(.house-row) .cashout-amount', '$0.00');
+
+            await openCashOutModal(page);
+            await page.$eval('#editCashOutAmount', (el) => { el.value = '999'; });
+            await page.focus('#editCashOutAmount');
+            await page.keyboard.press('Escape');
             await page.waitForFunction(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                return el && (el.value === '0' || el.value === '0.00');
+                const modal = document.getElementById('editCashOutModal');
+                return !modal || modal.style.display === 'none' || getComputedStyle(modal).display === 'none';
             });
+            const escapedCash = await page.$eval('tr:not(.house-row) .cashout-amount', (el) => el.textContent);
+            ok('escape cancels typed cash-out', escapedCash === '$0.00', escapedCash);
 
             await openBuyInModal(page);
             await page.$eval('#editBuyInAmount', (el) => { el.value = '-40'; });
@@ -1246,29 +1301,18 @@ async function run() {
             ok('escape cancels typed buy-in', escaped === '$200.00', escaped);
             await shot(page, 'typed-buyin.png');
 
-            const houseCount = await page.$$eval('.house-row .cashout-input', (els) => els.length);
+            const houseCount = await page.$$eval('.house-row .cashout-amount', (els) => els.length);
             ok('two house cash-out fields', houseCount === 2, String(houseCount));
-            await page.evaluate(() => {
-                const el = document.querySelectorAll('.house-row .cashout-input')[0];
-                el.value = '15';
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-            await page.waitForFunction(() => {
-                const el = document.querySelector('.house-row .cashout-input');
-                return el && (el.value === '15' || el.value === '15.00');
-            });
-            await page.evaluate(() => {
-                const el = document.querySelectorAll('.house-row .cashout-input')[1];
-                el.value = '-8';
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            });
+            await setNthCashOutAmount(page, '.house-row .cashout-amount', 0, '15');
+            await waitCashOutText(page, '.house-row .cashout-amount', '$15.00');
+            await setNthCashOutAmount(page, '.house-row .cashout-amount', 1, '-8');
             const houseCash = await page.evaluate(() => {
-                const vals = Array.from(document.querySelectorAll('.house-row .cashout-input')).map((el) => el.value);
+                const vals = Array.from(document.querySelectorAll('.house-row .cashout-amount')).map((el) => el.textContent);
                 const breakdown = Array.from(document.querySelectorAll('.balance-stat')).map((el) => el.textContent.trim());
                 const total = document.getElementById('totalBalance')?.textContent;
                 return { vals, breakdown, total };
             });
-            ok('house cash never goes negative', houseCash.vals[1] === '0' || houseCash.vals[1] === '0.00', JSON.stringify(houseCash.vals));
+            ok('house cash never goes negative', houseCash.vals[1] === '$0.00', JSON.stringify(houseCash.vals));
             ok('house cash counted in total', /Dealer \+ Host\$15/.test(houseCash.breakdown.join('').replace(/\s+/g, '')) || houseCash.breakdown.some((t) => /Dealer \+ Host/.test(t) && /\$15/.test(t)), JSON.stringify(houseCash.breakdown));
             await shot(page, 'house-cash-balance.png');
 
@@ -1453,15 +1497,8 @@ async function run() {
             const blinds = await page.$eval('#blindDisplay', (el) => el.textContent);
             ok('blind/stack preset applied', stack === '500' && /2/.test(blinds) && /5/.test(blinds), `${stack} ${blinds}`);
 
-            await page.evaluate(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                el.value = '170';
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-            await page.waitForFunction(() => {
-                const el = document.querySelector('tr:not(.house-row) .cashout-input');
-                return el && (el.value === '170' || el.value === '170.00');
-            });
+            await setCashOutAmount(page, '170');
+            await waitCashOutText(page, 'tr:not(.house-row) .cashout-amount', '$170.00');
             const noSettlement = await page.evaluate(() => !document.getElementById('settlementSection'));
             ok('cash-out does not open a settlement box', noSettlement);
             await shot(page, 'pnl-after-cashout.png');
@@ -1495,13 +1532,8 @@ async function run() {
             );
 
             await addPlayer(page, 'Bob', 200);
-            await page.evaluate(() => {
-                const inputs = document.querySelectorAll('tr:not(.house-row) .cashout-input');
-                inputs[0].value = '280';
-                inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-                inputs[1].value = '150';
-                inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
-            });
+            await setNthCashOutAmount(page, 'tr:not(.house-row) .cashout-amount', 0, '280');
+            await setNthCashOutAmount(page, 'tr:not(.house-row) .cashout-amount', 1, '150');
             await page.waitForFunction(() => {
                 const btn = document.getElementById('chopLeftoverBtn');
                 return btn && !btn.hidden && /chop/i.test(btn.textContent || '');
@@ -1519,7 +1551,7 @@ async function run() {
             const afterChop = await page.evaluate(() => ({
                 total: document.getElementById('totalBalance')?.textContent,
                 chopHidden: document.getElementById('chopLeftoverBtn')?.hidden,
-                aliceOut: document.querySelector('tr:not(.house-row) .cashout-input')?.value
+                aliceOut: document.querySelector('tr:not(.house-row) .cashout-amount')?.textContent
             }));
             ok('chop leftover closes the books', afterChop.total === '$0.00' && afterChop.chopHidden === true, JSON.stringify(afterChop));
             await shot(page, 'settlement-paid-copy-chop.png');
@@ -1562,7 +1594,7 @@ async function run() {
             ok('room display name is not an input', roomState.tag !== 'INPUT', roomState.tag);
 
             await page.evaluate(() => {
-                RoomSync.getRoomSnapshot = () => ({
+                const snap = {
                     roomId: 'r-share',
                     code: '0421',
                     role: 'host',
@@ -1570,11 +1602,15 @@ async function run() {
                     canEdit: true,
                     isHost: true,
                     displayName: 'River'
-                });
+                };
+                RoomSync.getRoomSnapshot = () => snap;
                 RoomSync.isInRoom = () => true;
+                updateRoomStatusBar(snap);
                 window.openRoomModal();
             });
             await page.waitForSelector('#roomActivePanel', { visible: true });
+            const liveRoomBtn = await page.$eval('#roomBtn', (el) => el.textContent.trim());
+            ok('live room header button is Manage', liveRoomBtn === 'Manage', liveRoomBtn);
             const shareUi = await page.evaluate(() => {
                 const btn = document.getElementById('copyRoomCodeBtn');
                 const code = document.getElementById('activeRoomCode');
@@ -1592,6 +1628,13 @@ async function run() {
             );
             await shot(page, 'room-share-button.png');
             await page.browserContext().overridePermissions(origin, ['clipboard-read', 'clipboard-write']);
+            await page.evaluate(() => {
+                Object.defineProperty(navigator, 'share', {
+                    configurable: true,
+                    writable: true,
+                    value: undefined
+                });
+            });
             await tap(page, '#copyRoomCodeBtn');
             await page.waitForFunction(() => document.getElementById('copyRoomCodeBtn')?.textContent === 'Copied');
             const shared = await page.evaluate(() => navigator.clipboard.readText());
@@ -1602,6 +1645,24 @@ async function run() {
                     && shared.includes(origin)
                     && shared.includes('\n'),
                 shared
+            );
+            await page.waitForFunction(() => document.getElementById('copyRoomCodeBtn')?.textContent === 'Share');
+            await page.evaluate(() => {
+                window.__sharedPayload = null;
+                navigator.share = async (payload) => {
+                    window.__sharedPayload = payload;
+                };
+            });
+            await tap(page, '#copyRoomCodeBtn');
+            await page.waitForFunction(() => window.__sharedPayload && window.__sharedPayload.url);
+            const nativeShare = await page.evaluate(() => window.__sharedPayload);
+            ok(
+                'share uses the device share sheet when available',
+                nativeShare
+                    && nativeShare.title === 'Poker Stack Tracker'
+                    && nativeShare.text === 'Room code: 0421'
+                    && /[?&]room=0421/.test(nativeShare.url || ''),
+                JSON.stringify(nativeShare)
             );
 
             const peopleHint = await page.$eval('#peopleModal .room-hint', (el) => el.textContent);
@@ -1780,10 +1841,10 @@ async function run() {
                 players: document.getElementById('totalPlayers')?.textContent,
                 rake: document.getElementById('rakeDisplay')?.textContent,
                 session: document.getElementById('sessionName')?.textContent,
-                houseCash: Array.from(document.querySelectorAll('.house-row .cashout-input')).map((el) => el.value)
+                houseCash: Array.from(document.querySelectorAll('.house-row .cashout-amount')).map((el) => el.textContent)
             }));
             ok('legacy localStorage keeps player', legacy.names.includes('OldAlice'), JSON.stringify(legacy.names));
-            ok('legacy localStorage adds house rows at 0', legacy.names.includes('Dealer') && legacy.names.includes('Host') && legacy.houseCash.every((v) => v === '0' || v === '0.00'), JSON.stringify(legacy));
+            ok('legacy localStorage adds house rows at 0', legacy.names.includes('Dealer') && legacy.names.includes('Host') && legacy.houseCash.every((v) => v === '$0.00'), JSON.stringify(legacy));
             ok('legacy localStorage defaults rake', legacy.rake === 'No rake', legacy.rake);
             ok('legacy player count excludes house', legacy.players === '1', legacy.players);
             ok('legacy session name kept', legacy.session === 'Legacy night', legacy.session);
@@ -1819,6 +1880,165 @@ async function run() {
                 JSON.stringify(mobileModal)
             );
             await shot(page, 'buyin-modal-mobile.png');
+            await page.keyboard.press('Escape');
+            await page.waitForFunction(() => {
+                const modal = document.getElementById('editBuyInModal');
+                return !modal || modal.style.display === 'none' || getComputedStyle(modal).display === 'none';
+            });
+            await openCashOutModal(page);
+            const mobileCash = await page.evaluate(() => {
+                const modal = document.getElementById('editCashOutModal');
+                const input = document.getElementById('editCashOutAmount');
+                const plus = modal && modal.querySelector('.buyin-step-plus, .buyin-step-minus');
+                const content = modal && modal.querySelector('.modal-content');
+                const cr = content && content.getBoundingClientRect();
+                const ir = input && input.getBoundingClientRect();
+                return {
+                    open: !!(modal && modal.style.display === 'block' && getComputedStyle(modal).display === 'block'),
+                    plus: !!plus,
+                    inputIn: !!(cr && ir && ir.left >= cr.left - 1 && ir.right <= cr.right + 1
+                        && ir.top >= cr.top - 1 && ir.bottom <= cr.bottom + 1)
+                };
+            });
+            ok(
+                'mobile cash-out popup contains type without plus/minus',
+                mobileCash.open && mobileCash.plus === false && mobileCash.inputIn,
+                JSON.stringify(mobileCash)
+            );
+            await shot(page, 'cashout-modal-mobile.png');
+        });
+
+        await scenario('past sessions after clear stats', async (page) => {
+            await interceptEmptyFirebase(page);
+            await gotoApp(page, origin);
+            await page.evaluate(() => localStorage.clear());
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await enterSolo(page);
+            await addPlayer(page, 'Alice', 200);
+            await setCashOutAmount(page, '150');
+            await page.evaluate(() => { window.confirm = () => true; });
+            await tap(page, '#clearStatsBtn');
+            await page.waitForFunction(() => document.getElementById('totalPlayers')?.textContent === '0');
+            await tap(page, '#roomsHomeBtn');
+            await waitHome(page);
+            await page.waitForFunction(() => document.querySelectorAll('#homeSessionList .home-room-row').length >= 1);
+            const past = await page.evaluate(() => {
+                const btn = document.querySelector('#homeSessionList .home-room-row');
+                return {
+                    title: btn ? (btn.querySelector('.home-room-row-title') || {}).textContent : '',
+                    meta: btn ? (btn.querySelector('.home-room-row-meta') || {}).textContent : '',
+                    emptyHidden: !!(document.getElementById('homeSessionEmpty') || {}).hidden
+                };
+            });
+            ok(
+                'cleared table is listed under Past sessions',
+                /session/i.test(past.title) && /1 player/.test(past.meta) && past.emptyHidden,
+                JSON.stringify(past)
+            );
+            await shot(page, 'home-past-sessions.png');
+            await tap(page, '#homeSessionList .home-room-row');
+            await page.waitForSelector('#sessionHistoryModal', { visible: true });
+            const detail = await page.evaluate(() => ({
+                body: (document.getElementById('sessionHistoryBody') || {}).textContent || '',
+                meta: (document.getElementById('sessionHistoryMeta') || {}).textContent || ''
+            }));
+            ok(
+                'past session detail has names and a cleared label',
+                /Alice/.test(detail.body) && /cleared/i.test(detail.meta),
+                JSON.stringify(detail)
+            );
+            await tap(page, '#sessionHistoryLoad');
+            await page.waitForFunction(() => !document.documentElement.classList.contains('app-home'));
+            const loaded = await page.evaluate(() => ({
+                names: Array.from(document.querySelectorAll('#playerTableBody .player-name')).map((el) => el.textContent),
+                cash: (document.querySelector('tr:not(.house-row) .cashout-amount') || {}).textContent || ''
+            }));
+            ok(
+                'load as solo restores the archived table',
+                loaded.names.includes('Alice') && loaded.cash === '$150.00',
+                JSON.stringify(loaded)
+            );
+        });
+
+        await scenario('room link fills join after home, then joins with nickname', async (page) => {
+            await interceptEmptyFirebase(page);
+            await page.evaluateOnNewDocument(() => {
+                localStorage.setItem('pst_display_name', 'River');
+            });
+            await page.goto(`${origin}/index.html?room=0421`, { waitUntil: 'domcontentloaded' });
+            await waitHome(page);
+            await page.waitForFunction(() => {
+                return document.getElementById('homeJoinRoomCode')?.value === '0421'
+                    && document.getElementById('joinRoomCode')?.value === '0421';
+            });
+            const filled = await page.evaluate(() => ({
+                home: (document.getElementById('homeJoinRoomCode') || {}).value || '',
+                modal: (document.getElementById('joinRoomCode') || {}).value || '',
+                gate: getComputedStyle(document.getElementById('authGate')).display
+            }));
+            ok(
+                'invite link prefills the room code on home after sign-in',
+                filled.home === '0421' && filled.modal === '0421' && filled.gate === 'none',
+                JSON.stringify(filled)
+            );
+            const joined = await page.evaluate(async () => {
+                window.__joined = null;
+                RoomSync.isConfigured = () => true;
+                RoomSync.isInRoom = () => false;
+                RoomSync.getRoomSnapshot = () => window.__joined;
+                RoomSync.joinRoom = async (code, name) => {
+                    window.__joined = { code, name, roomId: 'r-join', role: 'editor', status: 'active', canEdit: true };
+                    RoomSync.isInRoom = () => true;
+                    RoomSync.getRoomSnapshot = () => window.__joined;
+                    return window.__joined;
+                };
+                const okJoin = await autoJoinPendingRoom();
+                return { okJoin, joined: window.__joined };
+            });
+            ok(
+                'invite link joins with the signed-in nickname',
+                joined.okJoin === true && joined.joined && joined.joined.code === '0421' && joined.joined.name === 'River',
+                JSON.stringify(joined)
+            );
+        });
+
+        await scenario('shared action clock opens on other devices', async (page) => {
+            await interceptEmptyFirebase(page);
+            await gotoApp(page, origin);
+            await enterSolo(page);
+            const opened = await page.evaluate(() => {
+                const prevIn = RoomSync.isInRoom;
+                const prevEdit = RoomSync.canEdit;
+                RoomSync.isInRoom = () => true;
+                RoomSync.canEdit = () => false;
+                applyRemoteActionClock({
+                    running: true,
+                    expired: false,
+                    custom: false,
+                    durationMs: 30000,
+                    remainingMs: 30000,
+                    endsAt: Date.now() + 30000
+                });
+                const overlay = document.getElementById('actionClockOverlay');
+                const time = (document.getElementById('actionClockTime') || {}).textContent || '';
+                const readonly = overlay ? overlay.classList.contains('is-readonly') : false;
+                const startDisabled = !!(document.getElementById('actionClockStart') || {}).disabled;
+                RoomSync.isInRoom = prevIn;
+                RoomSync.canEdit = prevEdit;
+                updateActionClockEditability();
+                return {
+                    hidden: overlay ? overlay.hidden : true,
+                    time,
+                    readonly,
+                    startDisabled
+                };
+            });
+            ok(
+                'remote start opens the clock overlay for viewers',
+                opened.hidden === false && /^0:[123]\d$/.test(opened.time) && opened.readonly && opened.startDisabled,
+                JSON.stringify(opened)
+            );
+            await shot(page, 'action-clock-remote.png');
         });
     } finally {
         await browser.close();

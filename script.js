@@ -2,6 +2,8 @@ const STORAGE_KEY = 'pokerStackTracker';
 const SOLO_BACKUP_KEY = 'pokerStackTracker_soloBackup';
 const UNDO_STORAGE_PREFIX = 'pokerStackTracker_undo:';
 const UNDO_LIMIT = 40;
+const SESSIONS_KEY = 'pokerStackTracker_sessions';
+const SESSIONS_LIMIT = 30;
 const KNOWN_ROLES = ['host', 'editor', 'viewer'];
 
 // Room session bookkeeping
@@ -9,6 +11,7 @@ let pendingSoloStash = false;
 let lastEditable = null;
 // Last non-null room status so leave-after-ended can keep final stacks.
 let lastRoomStatus = null;
+let lastRoomCode = '';
 
 const HOUSE_DEALER_ID = 'house-dealer';
 const HOUSE_HOST_ID = 'house-host';
@@ -76,11 +79,15 @@ const playerForm = document.getElementById('playerForm');
 const editNameForm = document.getElementById('editNameForm');
 const editBuyInForm = document.getElementById('editBuyInForm');
 const editBuyInAmount = document.getElementById('editBuyInAmount');
+const editCashOutModal = document.getElementById('editCashOutModal');
+const editCashOutForm = document.getElementById('editCashOutForm');
+const editCashOutAmount = document.getElementById('editCashOutAmount');
 const editSessionModal = document.getElementById('editSessionModal');
 const editSessionForm = document.getElementById('editSessionForm');
 
 // Store current player being edited
 let editingPlayerId = null;
+let editingCashOut = null;
 
 // Initialize
 loadGameState();
@@ -251,32 +258,132 @@ function updateActionClockUI() {
             startBtn.textContent = 'Restart';
         }
         if (pauseBtn) pauseBtn.hidden = true;
-        return;
-    }
-    if (actionClock.running) {
+    } else if (actionClock.running) {
         if (hint) hint.textContent = remaining <= 10000 ? 'Last 10 seconds.' : 'Time to act.';
         if (startBtn) startBtn.hidden = true;
         if (pauseBtn) {
             pauseBtn.hidden = false;
             pauseBtn.textContent = 'Pause';
         }
-        return;
-    }
-    if (actionClock.remainingMs > 0 && actionClock.remainingMs < actionClock.durationMs) {
+    } else if (actionClock.remainingMs > 0 && actionClock.remainingMs < actionClock.durationMs) {
         if (hint) hint.textContent = 'Paused.';
         if (startBtn) startBtn.hidden = true;
         if (pauseBtn) {
             pauseBtn.hidden = false;
             pauseBtn.textContent = 'Resume';
         }
-        return;
+    } else {
+        if (hint) hint.textContent = 'Pick a time, then start.';
+        if (startBtn) {
+            startBtn.hidden = false;
+            startBtn.textContent = 'Start';
+        }
+        if (pauseBtn) pauseBtn.hidden = true;
     }
-    if (hint) hint.textContent = 'Pick a time, then start.';
-    if (startBtn) {
-        startBtn.hidden = false;
-        startBtn.textContent = 'Start';
+    updateActionClockEditability();
+}
+
+function captureActionClockShare() {
+    return {
+        running: !!actionClock.running,
+        expired: !!actionClock.expired,
+        custom: !!actionClock.custom,
+        durationMs: actionClock.durationMs,
+        remainingMs: actionClock.remainingMs,
+        endsAt: actionClock.running ? actionClock.endsAt : null
+    };
+}
+
+function normalizeActionClockShare(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const durationMs = Math.max(
+        ACTION_CLOCK_MIN * 1000,
+        Math.min(ACTION_CLOCK_MAX * 1000, toNumber(raw.durationMs, ACTION_CLOCK_DEFAULT * 1000))
+    );
+    const remainingMs = Math.max(0, Math.min(durationMs, toNumber(raw.remainingMs, durationMs)));
+    const endsAt = raw.endsAt == null ? null : toNumber(raw.endsAt, 0);
+    return {
+        running: raw.running === true,
+        expired: raw.expired === true,
+        custom: raw.custom === true,
+        durationMs,
+        remainingMs,
+        endsAt: endsAt && endsAt > 0 ? endsAt : null
+    };
+}
+
+function persistActionClockShare() {
+    gameState.actionClock = captureActionClockShare();
+    saveGameState();
+}
+
+function actionClockInRoom() {
+    return !!(window.RoomSync && RoomSync.isInRoom());
+}
+
+function canControlActionClock() {
+    return canEditGame();
+}
+
+function showActionClockOverlay() {
+    const overlay = document.getElementById('actionClockOverlay');
+    if (!overlay) return;
+    actionClock.open = true;
+    overlay.hidden = false;
+    document.documentElement.classList.add('action-clock-open');
+}
+
+function updateActionClockEditability() {
+    const overlay = document.getElementById('actionClockOverlay');
+    const readonly = actionClockInRoom() && !canControlActionClock();
+    if (overlay) overlay.classList.toggle('is-readonly', readonly);
+    const startBtn = document.getElementById('actionClockStart');
+    const pauseBtn = document.getElementById('actionClockPause');
+    const customInput = document.getElementById('actionClockCustomInput');
+    if (startBtn) startBtn.disabled = readonly;
+    if (pauseBtn) pauseBtn.disabled = readonly;
+    if (customInput) customInput.disabled = readonly;
+    document.querySelectorAll('.action-clock-preset').forEach((btn) => {
+        btn.disabled = readonly;
+    });
+}
+
+function applyRemoteActionClock(raw) {
+    const next = normalizeActionClockShare(raw);
+    if (!next) return;
+    const wasExpired = actionClock.expired;
+    const wasRunning = actionClock.running;
+    const wasOpen = actionClock.open;
+    const shareKey = (state) => JSON.stringify({
+        running: !!state.running,
+        expired: !!state.expired,
+        custom: !!state.custom,
+        durationMs: state.durationMs,
+        endsAt: state.running ? state.endsAt : null
+    });
+    if (shareKey(actionClock) === shareKey(next)) return;
+
+    actionClock.custom = next.custom;
+    actionClock.durationMs = next.durationMs;
+    actionClock.remainingMs = next.remainingMs;
+    actionClock.expired = next.expired;
+    actionClock.running = next.running;
+    actionClock.endsAt = next.endsAt;
+
+    if (next.running && next.endsAt) {
+        if (!wasRunning) showActionClockOverlay();
+        requestActionClockWakeLock();
+        startActionClockTicker();
+    } else {
+        stopActionClockTicker();
+        releaseActionClockWakeLock();
+        if (next.expired && !wasExpired && (wasRunning || wasOpen)) {
+            showActionClockOverlay();
+            beepActionClock();
+        }
+        updateActionClockUI();
     }
-    if (pauseBtn) pauseBtn.hidden = true;
+    updateActionClockEditability();
 }
 
 function expireActionClock() {
@@ -286,8 +393,10 @@ function expireActionClock() {
     actionClock.remainingMs = 0;
     actionClock.expired = true;
     releaseActionClockWakeLock();
+    showActionClockOverlay();
     updateActionClockUI();
     beepActionClock();
+    persistActionClockShare();
 }
 
 function tickActionClock() {
@@ -308,6 +417,7 @@ function startActionClockTicker() {
 }
 
 function applyActionClockDuration(seconds, fromCustom) {
+    if (actionClock.running) return;
     const next = Math.min(ACTION_CLOCK_MAX, Math.max(ACTION_CLOCK_MIN, seconds));
     actionClock.custom = !!fromCustom;
     actionClock.durationMs = next * 1000;
@@ -321,6 +431,7 @@ function applyActionClockDuration(seconds, fromCustom) {
 }
 
 function startActionClock() {
+    if (actionClockInRoom() && !assertCanEdit()) return;
     const seconds = selectedActionClockSeconds();
     if (seconds == null) {
         const hint = document.getElementById('actionClockHint');
@@ -335,9 +446,11 @@ function startActionClock() {
     requestActionClockWakeLock();
     startActionClockTicker();
     updateActionClockUI();
+    persistActionClockShare();
 }
 
 function pauseActionClock() {
+    if (actionClockInRoom() && !assertCanEdit()) return;
     if (!actionClock.running) return;
     const remaining = Math.max(0, actionClock.endsAt - Date.now());
     actionClock.running = false;
@@ -346,9 +459,11 @@ function pauseActionClock() {
     stopActionClockTicker();
     releaseActionClockWakeLock();
     updateActionClockUI();
+    persistActionClockShare();
 }
 
 function resumeActionClock() {
+    if (actionClockInRoom() && !assertCanEdit()) return;
     if (actionClock.running || actionClock.remainingMs <= 0) return;
     actionClock.running = true;
     actionClock.expired = false;
@@ -356,34 +471,42 @@ function resumeActionClock() {
     requestActionClockWakeLock();
     startActionClockTicker();
     updateActionClockUI();
+    persistActionClockShare();
 }
 
 function openActionClock() {
     const overlay = document.getElementById('actionClockOverlay');
     if (!overlay) return;
-    const saved = readActionClockSeconds();
-    actionClock.open = true;
-    actionClock.running = false;
-    actionClock.expired = false;
-    actionClock.custom = ACTION_CLOCK_PRESETS.indexOf(saved) === -1;
-    actionClock.durationMs = saved * 1000;
-    actionClock.remainingMs = actionClock.durationMs;
-    actionClock.endsAt = null;
-    overlay.hidden = false;
-    document.documentElement.classList.add('action-clock-open');
-    const customInput = document.getElementById('actionClockCustomInput');
-    if (customInput && actionClock.custom) customInput.value = String(saved);
+    const inProgress = actionClock.running
+        || actionClock.expired
+        || (actionClock.remainingMs > 0 && actionClock.remainingMs < actionClock.durationMs);
+    if (!inProgress) {
+        const saved = readActionClockSeconds();
+        actionClock.running = false;
+        actionClock.expired = false;
+        actionClock.custom = ACTION_CLOCK_PRESETS.indexOf(saved) === -1;
+        actionClock.durationMs = saved * 1000;
+        actionClock.remainingMs = actionClock.durationMs;
+        actionClock.endsAt = null;
+        const customInput = document.getElementById('actionClockCustomInput');
+        if (customInput && actionClock.custom) customInput.value = String(saved);
+    }
+    showActionClockOverlay();
     updateActionClockUI();
+    updateActionClockEditability();
 }
 
 function closeActionClock() {
     const overlay = document.getElementById('actionClockOverlay');
-    stopActionClockTicker();
-    releaseActionClockWakeLock();
+    if (!actionClockInRoom()) {
+        stopActionClockTicker();
+        releaseActionClockWakeLock();
+        actionClock.running = false;
+        actionClock.endsAt = null;
+        actionClock.expired = false;
+        actionClock.remainingMs = actionClock.durationMs;
+    }
     actionClock.open = false;
-    actionClock.running = false;
-    actionClock.endsAt = null;
-    actionClock.expired = false;
     if (overlay) overlay.hidden = true;
     document.documentElement.classList.remove('action-clock-open');
 }
@@ -451,7 +574,8 @@ initActionClock();
 
 clearStatsBtn.addEventListener('click', () => {
     if (!assertCanEdit()) return;
-    if (confirm('Are you sure you want to clear all stats? This cannot be undone.')) {
+    if (confirm('Clear this table? The session is saved under Past sessions on this device.')) {
+        archiveCurrentSession('clear');
         gameState.players = [];
         gameState.sessionName = 'Session Name';
         gameState.bankerName = 'Banker';
@@ -535,6 +659,27 @@ if (editBuyInForm) {
     });
 }
 
+if (editCashOutForm) {
+    editCashOutForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!assertCanEdit()) return;
+        const target = editingCashOut;
+        const amount = parseFloat(editCashOutAmount && editCashOutAmount.value);
+        closeEditCashOutModal();
+        if (!target) return;
+        if (target.kind === 'house') updateHouseCashOut(target.id, amount);
+        else updateCashOut(target.id, amount);
+    });
+}
+if (editCashOutAmount) {
+    editCashOutAmount.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeEditCashOutModal();
+        }
+    });
+}
+
 const editBuyInMinus = document.getElementById('editBuyInMinus');
 const editBuyInPlus = document.getElementById('editBuyInPlus');
 if (editBuyInMinus) {
@@ -559,6 +704,11 @@ document.addEventListener('keydown', (e) => {
     if (editBuyInModal && editBuyInModal.style.display === 'block') {
         e.preventDefault();
         closeEditBuyInModal();
+        return;
+    }
+    if (editCashOutModal && editCashOutModal.style.display === 'block') {
+        e.preventDefault();
+        closeEditCashOutModal();
     }
 });
 
@@ -633,6 +783,10 @@ closeButtons.forEach(btn => {
             closeEditBuyInModal();
             return;
         }
+        if (modal === editCashOutModal) {
+            closeEditCashOutModal();
+            return;
+        }
         if (modal === editNameModal) {
             closeEditNameModal();
             return;
@@ -646,6 +800,10 @@ window.addEventListener('click', (e) => {
     if (!e.target.classList.contains('modal')) return;
     if (e.target === editBuyInModal) {
         closeEditBuyInModal();
+        return;
+    }
+    if (e.target === editCashOutModal) {
+        closeEditCashOutModal();
         return;
     }
     if (e.target === editNameModal) {
@@ -1256,6 +1414,42 @@ function closeEditBuyInModal() {
     if (editBuyInForm) editBuyInForm.reset();
 }
 
+function closeEditCashOutModal() {
+    editingCashOut = null;
+    if (editCashOutModal) editCashOutModal.style.display = 'none';
+    if (editCashOutForm) editCashOutForm.reset();
+}
+
+function beginEditCashOut(kind, id) {
+    if (!assertCanEdit()) return;
+    if (!editCashOutModal || !editCashOutAmount) return;
+    let name = '';
+    let amount = 0;
+    if (kind === 'house') {
+        ensureHouseState();
+        const row = (gameState.house || []).find((h) => h.id === id);
+        if (!row) return;
+        name = row.name;
+        amount = row.cashOut;
+    } else {
+        const player = gameState.players.find((p) => p.id === id);
+        if (!player) return;
+        name = player.name;
+        amount = player.cashOut;
+    }
+    editingCashOut = { kind, id };
+    const title = editCashOutModal.querySelector('h2');
+    if (title) title.textContent = 'Edit Cash-out';
+    const hint = document.getElementById('editCashOutHint');
+    if (hint) hint.textContent = name || '';
+    editCashOutAmount.value = String(amount);
+    editCashOutModal.style.display = 'block';
+    queueMicrotask(() => {
+        editCashOutAmount.focus();
+        editCashOutAmount.select();
+    });
+}
+
 function undoLastStack() {
     if (!assertCanEdit()) return;
     const last = undoStack.pop();
@@ -1265,6 +1459,7 @@ function undoLastStack() {
         return;
     }
     closeEditBuyInModal();
+    closeEditCashOutModal();
     applyMoneyState(last);
     saveGameState();
     updateDisplay();
@@ -1634,6 +1829,188 @@ async function copyResultsToClipboard(button) {
     flashCopiedLabel(button, 'Copy');
 }
 
+function loadSessionArchives() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === 'object') : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function persistSessionArchives(list) {
+    try {
+        localStorage.setItem(SESSIONS_KEY, JSON.stringify((list || []).slice(0, SESSIONS_LIMIT)));
+    } catch (e) { /* quota */ }
+}
+
+function sessionHasContent() {
+    ensureHouseState();
+    if (seatedPlayers().length) return true;
+    if ((gameState.house || []).some((h) => money(h.cashOut) >= 0.005)) return true;
+    if (normalizeNotes(gameState.notes).trim()) return true;
+    if (gameState.sessionName && gameState.sessionName !== 'Session Name') return true;
+    return false;
+}
+
+function archiveCurrentSession(reason) {
+    if (!sessionHasContent()) return null;
+    const snap = window.RoomSync && RoomSync.isInRoom() ? RoomSync.getRoomSnapshot() : null;
+    const entry = {
+        id: String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8),
+        savedAt: Date.now(),
+        reason: reason || 'clear',
+        sessionName: gameState.sessionName && gameState.sessionName !== 'Session Name'
+            ? gameState.sessionName
+            : 'Poker session',
+        notes: normalizeNotes(gameState.notes).trim(),
+        copyText: formatResultsForWhatsApp(),
+        players: seatedPlayers().map((p) => ({
+            name: p.name,
+            totalBuyIn: p.totalBuyIn,
+            cashOut: p.cashOut,
+            pnl: calculatePnL(p),
+            settled: !!p.settled
+        })),
+        house: (gameState.house || []).map((h) => ({
+            name: h.name,
+            cashOut: h.cashOut,
+            settled: !!h.settled
+        })),
+        totals: cashTotals(),
+        roomCode: (snap && snap.code) || lastRoomCode || ''
+    };
+    const list = loadSessionArchives();
+    list.unshift(entry);
+    persistSessionArchives(list);
+    return entry;
+}
+
+function formatSessionWhen(ts) {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+function renderPastSessions() {
+    const list = document.getElementById('homeSessionList');
+    const empty = document.getElementById('homeSessionEmpty');
+    if (!list) return;
+    list.innerHTML = '';
+    const items = loadSessionArchives();
+    if (empty) empty.hidden = items.length > 0;
+    items.forEach((entry) => {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'home-room-row';
+        const title = document.createElement('span');
+        title.className = 'home-room-row-title';
+        title.textContent = entry.sessionName || 'Poker session';
+        const meta = document.createElement('span');
+        meta.className = 'home-room-row-meta';
+        const count = (entry.players || []).length;
+        const who = count === 1 ? '1 player' : `${count} players`;
+        const leftover = entry.totals ? formatMoney(entry.totals.balance, true) : '';
+        meta.textContent = [formatSessionWhen(entry.savedAt), who, leftover].filter(Boolean).join(' · ');
+        btn.appendChild(title);
+        btn.appendChild(meta);
+        btn.addEventListener('click', () => openSessionHistory(entry.id));
+        li.appendChild(btn);
+        list.appendChild(li);
+    });
+}
+
+function closeSessionHistoryModal() {
+    const modal = document.getElementById('sessionHistoryModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function openSessionHistory(id) {
+    const entry = loadSessionArchives().find((item) => item.id === id);
+    const modal = document.getElementById('sessionHistoryModal');
+    if (!entry || !modal) return;
+    const title = document.getElementById('sessionHistoryTitle');
+    const meta = document.getElementById('sessionHistoryMeta');
+    const body = document.getElementById('sessionHistoryBody');
+    if (title) title.textContent = entry.sessionName || 'Past session';
+    if (meta) {
+        const bits = [formatSessionWhen(entry.savedAt)];
+        if (entry.roomCode) bits.push('Room ' + entry.roomCode);
+        if (entry.reason === 'ended') bits.push('Ended room');
+        if (entry.reason === 'clear') bits.push('Cleared table');
+        meta.textContent = bits.join(' · ');
+    }
+    if (body) body.textContent = entry.copyText || '';
+    modal.dataset.sessionId = entry.id;
+    modal.style.display = 'block';
+}
+
+function loadArchivedSessionAsSolo(id) {
+    const entry = loadSessionArchives().find((item) => item.id === id);
+    if (!entry) return;
+    if (seatedPlayers().length && !confirm('Replace the current table with this past session?')) return;
+    gameState.sessionName = entry.sessionName || 'Session Name';
+    gameState.notes = entry.notes || '';
+    gameState.players = (entry.players || []).map((p, index) => ({
+        id: Date.now() + index,
+        name: p.name || 'Player',
+        totalBuyIn: money(p.totalBuyIn),
+        cashOut: money(p.cashOut),
+        settled: !!p.settled
+    }));
+    ensureHouseState();
+    (entry.house || []).forEach((h) => {
+        const row = (gameState.house || []).find((item) => item.name === h.name);
+        if (!row) return;
+        row.cashOut = money(h.cashOut);
+        row.settled = !!h.settled;
+    });
+    clearUndo();
+    saveGameState();
+    closeSessionHistoryModal();
+    openSolo();
+}
+
+function initSessionHistoryUi() {
+    const copyBtn = document.getElementById('sessionHistoryCopy');
+    const loadBtn = document.getElementById('sessionHistoryLoad');
+    const deleteBtn = document.getElementById('sessionHistoryDelete');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+            const modal = document.getElementById('sessionHistoryModal');
+            const entry = loadSessionArchives().find((item) => item.id === (modal && modal.dataset.sessionId));
+            if (!entry || !entry.copyText) return;
+            const copied = await copyTextToClipboard(entry.copyText);
+            if (copied) flashCopiedLabel(copyBtn, 'Copy');
+        });
+    }
+    if (loadBtn) {
+        loadBtn.addEventListener('click', () => {
+            const modal = document.getElementById('sessionHistoryModal');
+            loadArchivedSessionAsSolo(modal && modal.dataset.sessionId);
+        });
+    }
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            const modal = document.getElementById('sessionHistoryModal');
+            const id = modal && modal.dataset.sessionId;
+            if (!id) return;
+            if (!confirm('Delete this past session from this device?')) return;
+            persistSessionArchives(loadSessionArchives().filter((item) => item.id !== id));
+            closeSessionHistoryModal();
+            renderPastSessions();
+        });
+    }
+}
+
+initSessionHistoryUi();
+
 function togglePlayerSettled(playerId) {
     if (!assertCanEdit()) return;
     const player = seatedPlayers().find((p) => p.id === playerId);
@@ -1805,19 +2182,17 @@ function buildPlayerRow(player, editable) {
     }
 
     const cashOutCell = document.createElement('td');
-    const cashOutInput = document.createElement('input');
-    cashOutInput.type = 'number';
-    cashOutInput.className = 'cashout-input';
-    cashOutInput.value = String(player.cashOut);
-    cashOutInput.min = '0';
-    cashOutInput.step = '0.01';
-    cashOutInput.disabled = !editable;
-    cashOutInput.addEventListener('change', () => {
-        const amount = Math.max(0, parseFloat(cashOutInput.value) || 0);
-        cashOutInput.value = String(amount);
-        updateCashOut(player.id, amount);
-    });
-    cashOutCell.appendChild(cashOutInput);
+    if (editable) {
+        const cashOutBtn = document.createElement('button');
+        cashOutBtn.type = 'button';
+        cashOutBtn.className = 'cashout-amount';
+        cashOutBtn.title = 'Tap to type a cash-out';
+        cashOutBtn.textContent = `$${player.cashOut.toFixed(2)}`;
+        cashOutBtn.addEventListener('click', () => beginEditCashOut('player', player.id));
+        cashOutCell.appendChild(cashOutBtn);
+    } else {
+        cashOutCell.textContent = `$${player.cashOut.toFixed(2)}`;
+    }
 
     const pnlCell = document.createElement('td');
     pnlCell.className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-zero';
@@ -1866,19 +2241,17 @@ function buildHouseRow(house, editable) {
     buyInCell.textContent = '$0.00';
 
     const cashOutCell = document.createElement('td');
-    const cashOutInput = document.createElement('input');
-    cashOutInput.type = 'number';
-    cashOutInput.className = 'cashout-input';
-    cashOutInput.value = String(house.cashOut);
-    cashOutInput.min = '0';
-    cashOutInput.step = '0.01';
-    cashOutInput.disabled = !editable;
-    cashOutInput.addEventListener('change', () => {
-        const amount = Math.max(0, parseFloat(cashOutInput.value) || 0);
-        cashOutInput.value = String(amount);
-        updateHouseCashOut(house.id, amount);
-    });
-    cashOutCell.appendChild(cashOutInput);
+    if (editable) {
+        const cashOutBtn = document.createElement('button');
+        cashOutBtn.type = 'button';
+        cashOutBtn.className = 'cashout-amount';
+        cashOutBtn.title = 'Tap to type a cash-out';
+        cashOutBtn.textContent = `$${house.cashOut.toFixed(2)}`;
+        cashOutBtn.addEventListener('click', () => beginEditCashOut('house', house.id));
+        cashOutCell.appendChild(cashOutBtn);
+    } else {
+        cashOutCell.textContent = `$${house.cashOut.toFixed(2)}`;
+    }
 
     const pnl = money(house.cashOut);
     const pnlCell = document.createElement('td');
@@ -1916,6 +2289,7 @@ function applyEditabilityUI() {
     const notesEl = notesField();
     if (notesEl) notesEl.readOnly = !editable;
     document.body.classList.toggle('room-view-only', !editable && !!(window.RoomSync && RoomSync.isInRoom()));
+    updateActionClockEditability();
 }
 
 function saveGameState() {
@@ -1967,6 +2341,9 @@ function normalizeRemoteGame(remoteGame) {
     if (remoteGame.house !== undefined) normalized.house = normalizeHouse(remoteGame.house);
     if (remoteGame.clock !== undefined) normalized.clock = normalizeClock(remoteGame.clock);
     normalized.notes = normalizeNotes(remoteGame.notes);
+    if (remoteGame.actionClock !== undefined) {
+        normalized.actionClock = normalizeActionClockShare(remoteGame.actionClock);
+    }
 
     return normalized;
 }
@@ -1981,7 +2358,8 @@ function sharedStateKey(source) {
         rake: source.rake,
         house: source.house,
         clock: source.clock,
-        notes: source.notes || ''
+        notes: source.notes || '',
+        actionClock: source.actionClock || null
     });
 }
 
@@ -2016,7 +2394,8 @@ function applyRemoteGame(remoteGame) {
         rake: remote.rake || defaultRake(),
         house: remote.house || defaultHouse(),
         clock: remote.clock || defaultClock(),
-        notes: remote.notes !== undefined ? remote.notes : (gameState.notes || '')
+        notes: remote.notes !== undefined ? remote.notes : (gameState.notes || ''),
+        actionClock: remote.actionClock !== undefined ? remote.actionClock : gameState.actionClock
     };
 
     // Joining a room replaces local data: keep a restorable copy of the solo
@@ -2028,12 +2407,18 @@ function applyRemoteGame(remoteGame) {
         }
     }
 
+    const moneyBefore = sharedStateKey(Object.assign({}, gameState, { actionClock: null }));
+    const moneyAfter = sharedStateKey(Object.assign({}, next, { actionClock: null }));
     Object.assign(gameState, next);
     // Keep theme prefs local; persist shared fields locally for offline view.
     // Undo stays on this device only - never in the room document - so a
     // remote echo of our own write must not wipe the Undo button.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
-    closeEditBuyInModal();
+    if (moneyBefore !== moneyAfter) {
+        closeEditBuyInModal();
+        closeEditCashOutModal();
+    }
+    if (next.actionClock) applyRemoteActionClock(next.actionClock);
     updateDisplay();
 }
 
@@ -2271,7 +2656,7 @@ function updateRoomStatusBar(snap) {
             roleBadge.textContent = '';
         }
         if (peopleBtn) peopleBtn.hidden = true;
-        if (roomBtn) roomBtn.textContent = 'Share';
+        if (roomBtn) roomBtn.textContent = 'Room';
         return;
     }
 
@@ -2673,6 +3058,7 @@ function showTracker() {
 
 function showHome() {
     closeEditBuyInModal();
+    closeEditCashOutModal();
     stopVerifyPoll();
     document.documentElement.classList.remove('auth-pending');
     document.body.classList.remove('auth-pending');
@@ -2687,6 +3073,7 @@ function showHome() {
     updateAccountChip();
     initRoomUI();
     refreshHomeRooms();
+    renderPastSessions();
 }
 
 function closeTrackerModals() {
@@ -2794,26 +3181,92 @@ async function openRoomFromList(roomId) {
     }
 }
 
-function restoreJoinedRoom() {
+function pendingJoinCode() {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
+    if (!roomParam) return '';
+    return roomParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+}
+
+function fillJoinCodeFields(code) {
+    if (!code) return;
     const homeJoin = document.getElementById('homeJoinRoomCode');
     const modalJoin = document.getElementById('joinRoomCode');
-    if (roomParam) {
-        const code = roomParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
-        if (homeJoin) homeJoin.value = code;
-        if (modalJoin) modalJoin.value = code;
+    if (homeJoin) homeJoin.value = code;
+    if (modalJoin) modalJoin.value = code;
+}
+
+function clearPendingJoinFromUrl() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('room')) return;
+    url.searchParams.delete('room');
+    const next = url.pathname + (url.search || '') + url.hash;
+    history.replaceState({}, '', next);
+}
+
+async function autoJoinPendingRoom(code) {
+    const joinCode = code || pendingJoinCode();
+    fillJoinCodeFields(joinCode);
+    if (!joinCode) return false;
+    if (!window.RoomSync || typeof RoomSync.joinRoom !== 'function' || !RoomSync.isConfigured()) {
+        return false;
     }
+    const name = preferredDisplayName();
+    if (!name) {
+        setHomeRoomError('Set a unique display name, then this link will join the room.');
+        return false;
+    }
+    const current = RoomSync.getRoomSnapshot && RoomSync.getRoomSnapshot();
+    if (current && String(current.code || '').toUpperCase() === joinCode) {
+        clearPendingJoinFromUrl();
+        loadUndoForScope();
+        updateRoomStatusBar(current);
+        applyEditabilityUI();
+        showTracker();
+        return true;
+    }
+    if (RoomSync.isInRoom() && typeof RoomSync.leaveRoom === 'function') {
+        try { await RoomSync.leaveRoom(); } catch (e) { console.warn(e); }
+    }
+    pendingSoloStash = true;
+    try {
+        await RoomSync.joinRoom(joinCode, name);
+        clearPendingJoinFromUrl();
+        loadUndoForScope();
+        updateRoomStatusBar(RoomSync.getRoomSnapshot());
+        applyEditabilityUI();
+        showTracker();
+        return true;
+    } catch (e) {
+        pendingSoloStash = false;
+        setHomeRoomError((e && e.message) || 'Could not join room');
+        showHome();
+        return false;
+    }
+}
+
+function restoreJoinedRoom() {
+    const code = pendingJoinCode();
+    fillJoinCodeFields(code);
     if (!window.RoomSync || typeof RoomSync.tryRestoreRoom !== 'function') {
         showHome();
         return;
     }
-    RoomSync.tryRestoreRoom().then((snap) => {
+    RoomSync.tryRestoreRoom().then(async (snap) => {
         if (!appUnlocked) return;
         if (snap && snap.restore === 'ended') {
             pendingSoloStash = false;
             localStorage.removeItem(SOLO_BACKUP_KEY);
+            if (code) {
+                await autoJoinPendingRoom(code);
+                return;
+            }
             showHome();
+            return;
+        }
+        if (code && window.RoomSync.isConfigured && RoomSync.isConfigured()) {
+            const joined = await autoJoinPendingRoom(code);
+            if (joined) return;
             return;
         }
         if (snap) {
@@ -3358,6 +3811,20 @@ function initRoomUI() {
             const snap = RoomSync.getRoomSnapshot();
             if (!snap || !snap.code) return;
             const text = roomShareText(snap.code);
+            const url = roomInviteUrl(snap.code);
+            if (typeof navigator.share === 'function') {
+                try {
+                    await navigator.share({
+                        title: 'Poker Stack Tracker',
+                        text: 'Room code: ' + snap.code,
+                        url
+                    });
+                    flashCopiedLabel(copyBtn, 'Share');
+                    return;
+                } catch (e) {
+                    if (e && e.name === 'AbortError') return;
+                }
+            }
             const copied = await copyTextToClipboard(text);
             if (!copied) {
                 prompt('Share this room:', text);
@@ -3397,6 +3864,7 @@ function initRoomUI() {
             // session. Only restore the pre-join solo backup when leaving an
             // active room mid-session. Undo stays on this device either way.
             if (lastRoomStatus === 'ended') {
+                archiveCurrentSession('ended');
                 localStorage.removeItem(SOLO_BACKUP_KEY);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
                 persistUndo('solo');
@@ -3406,8 +3874,10 @@ function initRoomUI() {
                 showHome();
             }
             lastRoomStatus = null;
+            lastRoomCode = '';
         } else {
             lastRoomStatus = snap.status || 'active';
+            if (snap.code) lastRoomCode = snap.code;
             if (document.documentElement.classList.contains('app-home')) {
                 showTracker();
             }
